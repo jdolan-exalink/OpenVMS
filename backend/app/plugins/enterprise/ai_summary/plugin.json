@@ -1,0 +1,13 @@
+{
+  "name": "ai_summary",
+  "display_name": "Resumen IA de Eventos",
+  "version": "1.0.0",
+  "description": "Genera descripciones automáticas de eventos de cámara usando un modelo VLM vía Ollama (LLaVA, bakllava, etc.)",
+  "author": "OpenCCTV",
+  "category": "ai",
+  "requires_gpu": false,
+  "supports_openvino": false,
+  "min_ram_gb": 6,
+  "dependencies": ["httpx"],
+  "config_schema": "plugin.py::AISummaryPlugin.get_config_schema"
+}

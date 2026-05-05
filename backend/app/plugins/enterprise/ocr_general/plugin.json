@@ -1,0 +1,13 @@
+{
+  "name": "ocr_general",
+  "display_name": "Reconocimiento de Texto (OCR)",
+  "version": "1.0.0",
+  "description": "Lee texto de señalética, carteles y paneles con PaddleOCR — permite alertas por patrones regex o palabras clave",
+  "author": "OpenCCTV",
+  "category": "recognition",
+  "requires_gpu": false,
+  "supports_openvino": false,
+  "min_ram_gb": 6,
+  "dependencies": ["paddleocr"],
+  "config_schema": "plugin.py::OCRGeneralPlugin.get_config_schema"
+}

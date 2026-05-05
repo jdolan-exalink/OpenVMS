@@ -1,0 +1,13 @@
+{
+  "name": "epp",
+  "display_name": "Cumplimiento de EPP",
+  "version": "1.0.0",
+  "description": "Verifica el uso de Equipo de Protección Personal (casco, chaleco) en zonas de trabajo — alerta por incumplimiento",
+  "author": "OpenCCTV",
+  "category": "analytics",
+  "requires_gpu": true,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": ["ultralytics"],
+  "config_schema": "plugin.py::EPPPlugin.get_config_schema"
+}

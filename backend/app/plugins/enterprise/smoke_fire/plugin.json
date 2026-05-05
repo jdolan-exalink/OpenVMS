@@ -1,0 +1,13 @@
+{
+  "name": "smoke_fire",
+  "display_name": "Detección de Humo y Fuego",
+  "version": "1.0.0",
+  "description": "Detecta presencia de humo o fuego en tiempo real con YOLO entrenado específicamente para incendios",
+  "author": "OpenCCTV",
+  "category": "safety",
+  "requires_gpu": true,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": ["ultralytics"],
+  "config_schema": "plugin.py::SmokeFirePlugin.get_config_schema"
+}

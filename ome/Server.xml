@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Server version="8">
+  <Name>OpenCCTV-OME</Name>
+  <Type>origin</Type>
+  <IP>*</IP>
+
+  <Bind>
+    <Providers>
+      <RTSP>
+        <Port>10554</Port>
+      </RTSP>
+    </Providers>
+    <Publishers>
+      <WebRTC>
+        <Signalling>
+          <Port>3333</Port>
+        </Signalling>
+        <IceCandidates>
+          <IceCandidate>*:10000-10009/udp</IceCandidate>
+        </IceCandidates>
+      </WebRTC>
+      <LLHLS>
+        <Port>3334</Port>
+      </LLHLS>
+    </Publishers>
+  </Bind>
+
+  <VirtualHosts>
+    <VirtualHost>
+      <Name>default</Name>
+      <Host>
+        <Names>
+          <Name>*</Name>
+        </Names>
+      </Host>
+
+      <Applications>
+        <Application>
+          <Name>live</Name>
+          <Type>live</Type>
+
+          <Providers>
+            <!-- Pull RTSP streams from Frigate on demand -->
+            <RTSPPull />
+          </Providers>
+
+          <Publishers>
+            <WebRTC>
+              <Timeout>30000</Timeout>
+            </WebRTC>
+            <LLHLS>
+              <ChunkDuration>0.5</ChunkDuration>
+              <SegmentDuration>6</SegmentDuration>
+              <CrossDomains>
+                <Url>*</Url>
+              </CrossDomains>
+            </LLHLS>
+          </Publishers>
+        </Application>
+      </Applications>
+    </VirtualHost>
+  </VirtualHosts>
+</Server>

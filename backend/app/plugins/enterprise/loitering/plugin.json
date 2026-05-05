@@ -1,0 +1,13 @@
+{
+  "name": "loitering",
+  "display_name": "Detección de Merodeo",
+  "version": "1.0.0",
+  "description": "Emite alerta cuando una persona o vehículo permanece más del tiempo configurado dentro de una zona de interés",
+  "author": "Exalink",
+  "category": "analytics",
+  "requires_gpu": false,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": [],
+  "config_schema": "plugin.py::LoiteringPlugin.get_config_schema"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "lpr_advanced",
+  "display_name": "LPR Avanzado (YOLO + OCR)",
+  "version": "1.0.0",
+  "description": "Detecta matrículas directamente desde frames con YOLO + PaddleOCR; independiente de Frigate, con lista negra integrada",
+  "author": "OpenCCTV",
+  "category": "recognition",
+  "requires_gpu": true,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": ["ultralytics", "paddleocr"],
+  "config_schema": "plugin.py::LPRAdvancedPlugin.get_config_schema"
+}

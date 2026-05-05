@@ -1,0 +1,185 @@
+import { useState } from "react";
+import { useQuery } from "react-query";
+import { listEvents, VmsEvent } from "../../api/events";
+import { listCameras } from "../../api/cameras";
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
+
+function StatCard({ label, value, color }: { label: string; value: number | string; color?: string }) {
+  return (
+    <div className="vms-card p-4 flex flex-col gap-1">
+      <span className="text-xs text-[var(--text-3)]">{label}</span>
+      <span className={`text-2xl font-bold ${color ?? "text-[var(--text-0)]"}`}>{value}</span>
+    </div>
+  );
+}
+
+export default function AbandonedObjectPage() {
+  const [cameraId, setCameraId] = useState<string>("all");
+  const [pages, setPages] = useState<VmsEvent[][]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const { data: camerasData } = useQuery("abandoned-cameras", () => listCameras({ page_size: 200 }));
+  const cameras = camerasData?.items ?? [];
+
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+
+  const { data: statsData } = useQuery(
+    ["abandoned-stats", cameraId],
+    () => listEvents({
+      label: "abandoned_object",
+      source: "plugin",
+      camera_id: cameraId !== "all" ? cameraId : undefined,
+      start: todayStart.toISOString(),
+      limit: 500,
+    }),
+    { refetchInterval: 30000 },
+  );
+
+  const todayItems = statsData?.items ?? [];
+  const uniqueClasses = new Set(
+    todayItems.map((e) => (e.extra_metadata as Record<string, unknown>)?.object_class as string).filter(Boolean)
+  );
+  const alertedCams = new Set(todayItems.map((e) => e.camera_id).filter(Boolean));
+
+  const { isLoading } = useQuery(
+    ["abandoned-events", cameraId],
+    () => listEvents({
+      label: "abandoned_object",
+      source: "plugin",
+      camera_id: cameraId !== "all" ? cameraId : undefined,
+      limit: 50,
+    }),
+    {
+      onSuccess: (data) => {
+        setPages([data.items]);
+        setCursor(data.next_cursor);
+        setHasMore(data.next_cursor !== null);
+      },
+      keepPreviousData: true,
+    },
+  );
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { listEvents: le } = await import("../../api/events");
+      const data = await le({
+        label: "abandoned_object", source: "plugin",
+        camera_id: cameraId !== "all" ? cameraId : undefined,
+        cursor, limit: 50,
+      });
+      setPages((p) => [...p, data.items]);
+      setCursor(data.next_cursor);
+      setHasMore(data.next_cursor !== null);
+    } finally { setLoadingMore(false); }
+  }
+
+  const camById = new Map(cameras.map((c) => [c.id, c]));
+  const allEvents = pages.flat();
+
+  return (
+    <div className="space-y-3">
+      <div className="vms-card p-3 flex flex-wrap items-center gap-3">
+        <h2 className="m-0 text-base font-semibold text-[var(--text-0)]">📦 Objetos Abandonados</h2>
+        <select
+          value={cameraId}
+          onChange={(e) => { setCameraId(e.target.value); setPages([]); setCursor(null); }}
+          className="ml-auto h-8 rounded border border-[var(--line)] bg-[var(--bg-2)] px-2 text-sm text-[var(--text-0)]"
+        >
+          <option value="all">Todas las cámaras</option>
+          {cameras.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Alertas hoy" value={todayItems.length} color="text-[var(--warn)]" />
+        <StatCard label="Tipos de objeto" value={uniqueClasses.size} />
+        <StatCard label="Cámaras con alertas" value={alertedCams.size} />
+        <StatCard label="Cámaras monitorizadas" value={cameras.length} />
+      </div>
+
+      {uniqueClasses.size > 0 && (
+        <div className="vms-card p-3">
+          <h3 className="mb-2 text-sm font-semibold text-[var(--text-0)]">Clases detectadas hoy</h3>
+          <div className="flex flex-wrap gap-2">
+            {[...uniqueClasses].map((cls) => (
+              <span key={cls} className="vms-pill info">{cls}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="vms-card">
+        <div className="vms-card-hd">
+          <h3>Historial de objetos abandonados</h3>
+          {!isLoading && <span className="mono text-[11px] text-[var(--text-3)]">{allEvents.length} cargados</span>}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="vms-table">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Cámara</th>
+                <th>Objeto</th>
+                <th>Duración</th>
+                <th>Track ID</th>
+                <th>Severidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={6}>Cargando...</td></tr>
+              ) : allEvents.length === 0 ? (
+                <tr><td colSpan={6}>Sin objetos abandonados registrados</td></tr>
+              ) : allEvents.map((ev: VmsEvent) => {
+                const cam = ev.camera_id ? camById.get(ev.camera_id) : undefined;
+                const meta = (ev.extra_metadata ?? {}) as Record<string, unknown>;
+                const objClass = (meta.object_class as string) ?? ev.label ?? "—";
+                const duration = typeof meta.duration_seconds === "number"
+                  ? fmtDuration(meta.duration_seconds as number)
+                  : "—";
+                const trackId = meta.track_id !== undefined ? String(meta.track_id) : "—";
+                return (
+                  <tr key={ev.id}>
+                    <td className="mono text-[11px] text-[var(--text-2)] whitespace-nowrap">{fmtTime(ev.start_time)}</td>
+                    <td>{cam?.display_name ?? <span className="text-[var(--text-3)]">—</span>}</td>
+                    <td>
+                      <span className="vms-pill info">{objClass}</span>
+                    </td>
+                    <td className="mono text-[11px]">{duration}</td>
+                    <td className="mono text-[11px]">{trackId}</td>
+                    <td>
+                      {ev.severity
+                        ? <span className={`vms-pill ${ev.severity === "high" || ev.severity === "critical" ? "warn" : "info"}`}>{ev.severity}</span>
+                        : <span className="text-[var(--text-3)]">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {hasMore && (
+          <div className="border-t border-[var(--line)] p-3 text-center">
+            <button type="button" onClick={loadMore} disabled={loadingMore} className="vms-btn !px-6 disabled:opacity-60">
+              {loadingMore ? "Cargando..." : "Cargar más"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

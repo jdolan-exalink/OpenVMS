@@ -1,0 +1,13 @@
+{
+  "name": "line_crossing",
+  "display_name": "Cruce de Línea Virtual",
+  "version": "1.0.0",
+  "description": "Detecta y registra cuando un objeto cruza una línea virtual configurable, con control de dirección (A→B / B→A)",
+  "author": "Exalink",
+  "category": "analytics",
+  "requires_gpu": false,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": [],
+  "config_schema": "plugin.py::LineCrossingPlugin.get_config_schema"
+}

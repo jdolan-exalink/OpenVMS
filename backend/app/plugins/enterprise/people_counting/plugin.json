@@ -1,0 +1,13 @@
+{
+  "name": "people_counting",
+  "display_name": "Conteo de Personas y Vehículos",
+  "version": "1.0.0",
+  "description": "Cuenta personas y vehículos que cruzan líneas virtuales; genera reportes horarios y estadísticas por zona",
+  "author": "Exalink",
+  "category": "analytics",
+  "requires_gpu": false,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": [],
+  "config_schema": "plugin.py::PeopleCountingPlugin.get_config_schema"
+}

@@ -1,0 +1,339 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "instructions": "Copia el JSON de la sección 'example' del plugin que quieras configurar, pégalo en el editor de configuración y ajusta según tus necesidades.",
+    "categories": {
+      "recognition":    "Identificación de entidades — matrículas, rostros, texto",
+      "analytics":      "Análisis de comportamiento y escena — zonas, movimiento, patrones",
+      "safety":         "Detección de peligros críticos — fuego, humo",
+      "ai":             "Inteligencia artificial aplicada — resúmenes, búsqueda semántica",
+      "notifications":  "Envío de alertas a canales externos"
+    }
+  },
+
+  "_category_recognition": "── RECONOCIMIENTO ──────────────────────────────────────────────────────────",
+
+  "lpr": {
+    "display_name": "LPR Básico",
+    "version": "1.0.0",
+    "category": "recognition",
+    "description": "Procesa sub_labels de Frigate para almacenar detecciones de matrículas y gestionar lista negra de vehículos",
+    "example": {
+      "detection_cooldown": 10,
+      "alert_cooldown": 60,
+      "enabled_cameras": []
+    }
+  },
+
+  "lpr_advanced": {
+    "display_name": "LPR Avanzado (YOLO + OCR)",
+    "version": "1.0.0",
+    "category": "recognition",
+    "requires_gpu": true,
+    "description": "Detecta matrículas directamente desde frames con YOLO + PaddleOCR; independiente de Frigate, con lista negra integrada",
+    "example": {
+      "plate_model_path": "/models/model_cache/yolov9_license_plate/yolov9-256-license-plates.onnx",
+      "confidence": 0.5,
+      "use_gpu": false,
+      "ocr_lang": "en",
+      "detection_cooldown": 10,
+      "enabled_cameras": []
+    }
+  },
+
+  "face_recognition": {
+    "display_name": "Reconocimiento Facial",
+    "version": "1.0.0",
+    "category": "recognition",
+    "requires_gpu": true,
+    "description": "Identifica rostros registrados en galería usando InsightFace + búsqueda vectorial con pgvector",
+    "example": {
+      "model_name": "buffalo_l",
+      "detection_cooldown": 5.0,
+      "similarity_threshold": 0.5,
+      "min_face_confidence": 0.5,
+      "use_gpu": true,
+      "alert_severity": "medium",
+      "store_unknown_faces": true,
+      "enabled_cameras": []
+    }
+  },
+
+  "ocr_general": {
+    "display_name": "Reconocimiento de Texto (OCR)",
+    "version": "1.0.0",
+    "category": "recognition",
+    "description": "Lee texto de señalética, carteles y paneles con PaddleOCR — permite alertas por patrones regex o palabras clave",
+    "example": {
+      "ocr_lang": "en",
+      "use_gpu": false,
+      "confidence_threshold": 0.6,
+      "min_text_length": 3,
+      "min_ocr_interval": 5.0,
+      "alert_cooldown": 300,
+      "alert_severity": "medium",
+      "target_patterns": ["\\d{4}\\s?[A-Z]{3}", "ABC-123"],
+      "whitelist": ["STOP", "WARNING", "DANGER", "NO ENTRY"],
+      "enabled_cameras": [],
+      "roi_regions": {
+        "camara_entrada": [
+          {"name": "senaletica", "x1": 100, "y1": 50, "x2": 540, "y2": 150}
+        ]
+      }
+    }
+  },
+
+  "_category_analytics": "── ANALÍTICAS ──────────────────────────────────────────────────────────────",
+
+  "people_counting": {
+    "display_name": "Conteo de Personas y Vehículos",
+    "version": "1.0.0",
+    "category": "analytics",
+    "description": "Cuenta personas y vehículos que cruzan líneas virtuales; genera reportes horarios y estadísticas por zona",
+    "example": {
+      "counting_lines": {
+        "entrada_principal": [
+          {
+            "name": "contador_vehiculos",
+            "zone": "entrada",
+            "p1": [0, 240],
+            "p2": [640, 240],
+            "labels": ["car", "truck", "bus", "motorcycle"]
+          }
+        ],
+        "hall_principal": [
+          {
+            "name": "contador_personas",
+            "zone": "hall",
+            "p1": [0, 360],
+            "p2": [640, 360],
+            "labels": ["person"]
+          }
+        ]
+      }
+    }
+  },
+
+  "line_crossing": {
+    "display_name": "Cruce de Línea Virtual",
+    "version": "1.0.0",
+    "category": "analytics",
+    "description": "Detecta y registra cuando un objeto cruza una línea virtual configurable, con control de dirección (A→B / B→A)",
+    "example": {
+      "lines": {
+        "entrada_principal": [
+          {
+            "name": "entrada_vehicular",
+            "p1": [0, 240],
+            "p2": [640, 240],
+            "directions": ["AB", "BA"],
+            "severity": "medium"
+          }
+        ],
+        "estacionamiento": [
+          {
+            "name": "pasaje_norte",
+            "p1": [320, 0],
+            "p2": [320, 480],
+            "directions": ["AB"],
+            "severity": "low"
+          }
+        ]
+      }
+    }
+  },
+
+  "loitering": {
+    "display_name": "Detección de Merodeo",
+    "version": "1.0.0",
+    "category": "analytics",
+    "description": "Emite alerta cuando una persona o vehículo permanece más del tiempo configurado dentro de una zona de interés",
+    "example": {
+      "zones": {
+        "entrada_principal": [
+          {
+            "name": "zona_vehiculos",
+            "polygon": [[100, 200], [300, 200], [300, 400], [100, 400]],
+            "threshold_seconds": 60,
+            "labels": ["car", "motorcycle", "truck"]
+          },
+          {
+            "name": "zona_personas",
+            "polygon": [[50, 100], [250, 100], [250, 300], [50, 300]],
+            "threshold_seconds": 120,
+            "labels": ["person"]
+          }
+        ],
+        "estacionamiento": [
+          {
+            "name": "area_espera",
+            "polygon": [[0, 0], [640, 0], [640, 480], [0, 480]],
+            "threshold_seconds": 180,
+            "labels": ["person"]
+          }
+        ]
+      }
+    }
+  },
+
+  "abandoned_object": {
+    "display_name": "Objeto Abandonado",
+    "version": "1.0.0",
+    "category": "analytics",
+    "requires_gpu": true,
+    "description": "Detecta objetos detenidos sin dueño mediante tracking YOLO — emite alerta tras N segundos sin movimiento",
+    "example": {
+      "model_path": "/models/abandoned_object_yolo.pt",
+      "confidence": 0.5,
+      "use_gpu": true,
+      "min_abandoned_seconds": 30,
+      "movement_threshold": 50,
+      "excluded_labels": ["person", "car", "truck", "bus", "motorcycle", "bicycle"],
+      "enabled_cameras": []
+    }
+  },
+
+  "epp": {
+    "display_name": "Cumplimiento de EPP",
+    "version": "1.0.0",
+    "category": "analytics",
+    "requires_gpu": true,
+    "description": "Verifica el uso de Equipo de Protección Personal (casco, chaleco) en zonas de trabajo — alerta por incumplimiento",
+    "example": {
+      "model_path": "/models/epp_yolo.pt",
+      "confidence": 0.5,
+      "use_gpu": true,
+      "min_violation_seconds": 2,
+      "alert_cooldown": 60,
+      "enabled_cameras": [],
+      "zones": {
+        "camara_oficina": [
+          {
+            "name": "zona_trabajo_pesado",
+            "polygon": [[100, 100], [540, 100], [540, 380], [100, 380]],
+            "require_helmet": true,
+            "require_vest": true,
+            "labels": ["person", "worker"]
+          }
+        ]
+      }
+    }
+  },
+
+  "camera_sabotage": {
+    "display_name": "Tamper de Cámara",
+    "version": "1.0.0",
+    "category": "analytics",
+    "description": "Detecta manipulación física de la cámara: tapado, desenfoque abrupto, cambio de escena o pérdida de señal",
+    "example": {
+      "blur_threshold": 50,
+      "ssim_threshold": 0.4,
+      "consecutive_frames_required": 3,
+      "monitored_cameras": []
+    }
+  },
+
+  "fall_detection": {
+    "display_name": "Detección de Caídas",
+    "version": "1.0.0",
+    "category": "analytics",
+    "description": "Detecta caídas analizando la postura corporal con MediaPipe Pose — útil en entornos de tercera edad o zonas de riesgo",
+    "example": {
+      "enabled_cameras": [],
+      "sensitivity": "normal",
+      "alert_cooldown": 60,
+      "model_complexity": 1,
+      "fall_angle_threshold": 50
+    }
+  },
+
+  "_category_safety": "── SEGURIDAD CRÍTICA ────────────────────────────────────────────────────────",
+
+  "smoke_fire": {
+    "display_name": "Detección de Humo y Fuego",
+    "version": "1.0.0",
+    "category": "safety",
+    "requires_gpu": true,
+    "description": "Detecta presencia de humo o fuego en tiempo real con YOLO entrenado específicamente para incendios",
+    "example": {
+      "model_path": "/models/smoke_fire_yolo.pt",
+      "confidence": 0.4,
+      "use_gpu": true,
+      "consecutive_frames_required": 3,
+      "alert_cooldown": 120,
+      "enabled_cameras": []
+    }
+  },
+
+  "_category_ai": "── INTELIGENCIA ARTIFICIAL ──────────────────────────────────────────────────",
+
+  "ai_summary": {
+    "display_name": "Resumen IA de Eventos",
+    "version": "1.0.0",
+    "category": "ai",
+    "description": "Genera descripciones automáticas de eventos de cámara usando un modelo VLM vía Ollama (LLaVA, bakllava, etc.)",
+    "example": {
+      "ollama_url": "http://10.1.1.39:11434",
+      "model": "gemma4:e4b",
+      "min_severity": "medium",
+      "excluded_labels": [],
+      "prompt_template": "Proporciona un resumen breve (2-3 oraciones) del evento y recomienda acciones de seguimiento si es necesario."
+    }
+  },
+
+  "semantic_search": {
+    "display_name": "Búsqueda Semántica de Eventos",
+    "version": "1.0.0",
+    "category": "ai",
+    "requires_gpu": true,
+    "description": "Indexa frames con embeddings CLIP en pgvector para buscar escenas por descripción textual libre",
+    "example": {
+      "clip_model": "ViT-B/32",
+      "use_gpu": false,
+      "embedding_interval": 30,
+      "similarity_threshold": 0.25,
+      "max_results": 10,
+      "enabled_cameras": []
+    }
+  },
+
+  "_category_notifications": "── NOTIFICACIONES ───────────────────────────────────────────────────────────",
+
+  "notifications": {
+    "display_name": "Alertas Multicanal",
+    "version": "1.0.0",
+    "category": "notifications",
+    "description": "Envía alertas por Telegram o Webhook según reglas configurables de label, cámara, zona y score mínimo",
+    "example": {
+      "rules": [
+        {
+          "name": "Persona en entrada",
+          "cameras": ["cam1", "cam2"],
+          "labels": ["person"],
+          "min_score": 0.75,
+          "zones": ["zona_entrada"],
+          "channel": "telegram",
+          "cooldown_seconds": 60,
+          "telegram": {
+            "bot_token": "YOUR_BOT_TOKEN",
+            "chat_id": "YOUR_CHAT_ID"
+          }
+        },
+        {
+          "name": "Vehículo sospechoso",
+          "cameras": [],
+          "labels": ["car", "truck"],
+          "min_score": 0.6,
+          "zones": [],
+          "channel": "webhook",
+          "cooldown_seconds": 120,
+          "webhook": {
+            "url": "https://your-server/webhook",
+            "headers": {"Authorization": "Bearer TOKEN"},
+            "extra_fields": {}
+          }
+        }
+      ]
+    }
+  }
+}

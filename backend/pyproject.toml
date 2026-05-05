@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opencctv-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic-settings>=2.6",
+    "redis[hiredis]>=5.2",
+    "httpx>=0.28",
+    "aiomqtt>=2.3",
+    "pyjwt>=2.10",
+    "passlib[bcrypt]>=1.7",
+    "bcrypt==4.0.1",
+    "email-validator>=2.2",
+    "structlog>=24.4",
+    "slowapi>=0.1.9",
+    "numpy<2",
+    "opencv-python-headless>=4.10,<4.12",
+    "pillow>=10.0",
+    "torch>=2.4",
+    "torchvision>=0.19",
+    "ultralytics>=8.3",
+    "paddleocr>=2.9",
+    "paddlepaddle>=3.0",
+    "openai-clip>=1.0.1",
+    "insightface>=0.7.3",
+    "onnxruntime>=1.20",
+    "scikit-image>=0.24",
+    "mediapipe==0.10.21",
+    "python-multipart>=0.0.9",
+    "psutil>=7.0",
+    "pynvml>=11.0",
+    "huggingface_hub>=0.25",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

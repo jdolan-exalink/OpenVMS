@@ -1,0 +1,13 @@
+{
+  "name": "semantic_search",
+  "display_name": "Búsqueda Semántica de Eventos",
+  "version": "1.0.0",
+  "description": "Indexa frames con embeddings CLIP en pgvector para buscar escenas por descripción textual libre",
+  "author": "OpenCCTV",
+  "category": "ai",
+  "requires_gpu": true,
+  "supports_openvino": false,
+  "min_ram_gb": 8,
+  "dependencies": ["clip-by-openai", "transformers"],
+  "config_schema": "plugin.py::SemanticSearchPlugin.get_config_schema"
+}

@@ -1,0 +1,119 @@
+services:
+
+  # ── Database ─────────────────────────────────────────────────────────────────
+  postgres:
+    # pgvector/pgvector:pg16 ships the vector extension pre-compiled.
+    # The init script creates the extension as superuser on first boot.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opencctv}
+      POSTGRES_USER: ${POSTGRES_USER:-opencctv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opencctv}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Cache / pub-sub ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── MQTT broker ──────────────────────────────────────────────────────────────
+  mqtt:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    restart: unless-stopped
+
+  # ── Streaming (WebRTC + LL-HLS) ──────────────────────────────────────────────
+  ovenmediaengine:
+    image: airensoft/ovenmediaengine:latest
+    network_mode: host
+    volumes:
+      - ./ome/Server.xml:/opt/ovenmediaengine/bin/origin_conf/Server.xml
+    restart: unless-stopped
+
+  # ── Model initializer ────────────────────────────────────────────────────────
+  # Runs once before the backend to download YOLO weights and pre-warm
+  # auto-download ML libraries (CLIP, InsightFace, PaddleOCR, MediaPipe).
+  # The backend waits for this service to exit 0 before starting.
+  model-init:
+    build: ./backend
+    command: ["python", "-m", "app.scripts.download_models"]
+    environment:
+      MODELS_DIR: /models
+      SKIP_MODEL_DOWNLOAD: ${SKIP_MODEL_DOWNLOAD:-0}
+      FORCE_MODEL_DOWNLOAD: ${FORCE_MODEL_DOWNLOAD:-0}
+      # Point auto-download caches to the persisted models volume
+      HF_HOME: /models/.cache/hf
+      TORCH_HOME: /models/.cache/torch
+      TRANSFORMERS_CACHE: /models/.cache/hf/transformers
+    volumes:
+      - models_data:/models
+    restart: "no"
+
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-opencctv}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-opencctv}
+      REDIS_URL: redis://redis:6379
+      MQTT_BROKER: mqtt
+      SECRET_KEY: ${SECRET_KEY}
+      OME_WEBRTC_BASE: ${OME_WEBRTC_BASE:-ws://localhost:3333}
+      OME_LLHLS_BASE: ${OME_LLHLS_BASE:-http://localhost:3334}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      # Cache dirs — must match model-init so warm caches are reused
+      HF_HOME: /models/.cache/hf
+      TORCH_HOME: /models/.cache/torch
+      TRANSFORMERS_CACHE: /models/.cache/hf/transformers
+      MODELS_DIR: /models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      model-init:
+        condition: service_completed_successfully
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./backend/app/plugins/external:/app/plugins/external
+      - models_data:/models
+      - exports_data:/tmp/exports
+    restart: unless-stopped
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  mosquitto_data:
+  exports_data:
+  # Persists YOLO weights, CLIP, InsightFace, PaddleOCR caches across restarts
+  models_data:

@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>OpenCCTV VMS — LiveView Wireframes</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Kalam:wght@300;400;700&family=Architects+Daughter&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+  rel="stylesheet"
+/>
+
+<style>
+  html, body { margin:0; padding:0; background:#f0eee9; }
+  body { font-family: 'Kalam', 'Caveat', system-ui, sans-serif; color:#1a1a1a; }
+
+  /* ── Wireframe vocabulary ───────────────────────────────────── */
+  :root{
+    --ink:           #1a1a1a;
+    --ink-2:         #3a3a3a;
+    --ink-3:         #6a6a6a;
+    --paper:         #fafaf6;
+    --paper-2:       #f1efe7;
+    --paper-3:       #e6e3d8;
+    --line:          #1a1a1a;
+    --line-soft:     #6a6a6a;
+    --accent:        #2a8f5f;     /* sketchy green stand-in for #00d084 */
+    --accent-soft:   #a7d8c2;
+    --accent-fill:   #d6ecdf;
+    --warn:          #c96442;
+    --warn-soft:     #e8b9aa;
+    --note-bg:       #fef4a8;
+    --note-ink:      #5a4a2a;
+
+    --sketch-rough:  1;            /* multiplier for jitter */
+    --hand:          'Kalam','Caveat',sans-serif;
+    --label:         'Architects Daughter','Kalam',cursive;
+    --mono:          'JetBrains Mono', ui-monospace, monospace;
+    --ui:            'Inter', system-ui, sans-serif;
+  }
+
+  /* Hand-drawn rectangle: dashed-ish double border using box-shadow + filter */
+  .wf-card{
+    position:relative;
+    background:var(--paper);
+    border:1.5px solid var(--ink);
+    border-radius:6px;
+    box-shadow:
+      2px 3px 0 rgba(0,0,0,0.06),
+      inset 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .wf-card.flat{ box-shadow:none; }
+  .wf-card.dim { background:var(--paper-2); }
+  .wf-card.dark{ background:#1a1f2e; color:#e7eaf0; border-color:#2a2f3e; }
+
+  /* Squiggly-underline for "headings written by hand" */
+  .wf-h{
+    font-family:var(--hand);
+    font-weight:700;
+    letter-spacing:.01em;
+  }
+  .wf-h-xl{ font-size:24px; }
+  .wf-h-l { font-size:18px; }
+  .wf-h-m { font-size:14px; }
+
+  .wf-mute{ color:var(--ink-3); }
+  .wf-label{ font-family:var(--label); font-size:11px; color:var(--ink-2); letter-spacing:.02em; }
+  .wf-mono { font-family:var(--mono); font-size:11px; color:var(--ink-2); }
+
+  /* Sketchy "X" through a thumbnail (placeholder for video) */
+  .wf-x{
+    position:relative; overflow:hidden;
+    background:
+      repeating-linear-gradient(135deg, rgba(0,0,0,0.04) 0 6px, transparent 6px 12px),
+      var(--paper-2);
+  }
+  .wf-x::before, .wf-x::after{
+    content:""; position:absolute; inset:0;
+    background:
+      linear-gradient(to top right, transparent calc(50% - 0.6px), rgba(0,0,0,.35) calc(50% - 0.6px), rgba(0,0,0,.35) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+  }
+  .wf-x::after{
+    background:
+      linear-gradient(to top left, transparent calc(50% - 0.6px), rgba(0,0,0,.35) calc(50% - 0.6px), rgba(0,0,0,.35) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+  }
+
+  /* Variant: dark video tile (LiveView is dark theme) */
+  .wf-x.dark{
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.03) 0 6px, transparent 6px 12px),
+      #0d0f14;
+    color:#9aa3b2;
+  }
+  .wf-x.dark::before, .wf-x.dark::after{
+    /* fainter X on dark */
+  }
+  .wf-x.dark::before{
+    background:
+      linear-gradient(to top right, transparent calc(50% - 0.5px), rgba(255,255,255,.10) calc(50% - 0.5px), rgba(255,255,255,.10) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  }
+  .wf-x.dark::after{
+    background:
+      linear-gradient(to top left, transparent calc(50% - 0.5px), rgba(255,255,255,.10) calc(50% - 0.5px), rgba(255,255,255,.10) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  }
+
+  /* Sketchy pill / tag */
+  .wf-pill{
+    display:inline-flex; align-items:center; gap:4px;
+    padding:1px 7px;
+    border:1.2px solid var(--ink);
+    border-radius:999px;
+    background:var(--paper);
+    font-family:var(--label); font-size:10px;
+    color:var(--ink);
+    line-height:1.5;
+  }
+  .wf-pill.green { background:var(--accent-fill); border-color:var(--accent); color:#1f5b3e; }
+  .wf-pill.warn  { background:var(--warn-soft);   border-color:var(--warn);   color:#5a2a1c; }
+  .wf-pill.ghost { background:transparent; border-style:dashed; color:var(--ink-2); }
+  .wf-pill.solid-dark { background:#1a1f2e; color:#cfd6e2; border-color:#1a1f2e; }
+  .wf-dot{
+    width:6px; height:6px; border-radius:50%; display:inline-block; background:var(--accent);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.15);
+  }
+  .wf-dot.warn{ background:var(--warn); }
+  .wf-dot.off { background:#9aa3b2; }
+
+  /* Sticky-note for annotations */
+  .wf-note{
+    position:absolute;
+    background:var(--note-bg);
+    color:var(--note-ink);
+    font-family:var(--hand);
+    font-size:13px;
+    line-height:1.25;
+    padding:8px 10px;
+    border-radius:2px;
+    box-shadow: 1px 2px 0 rgba(0,0,0,0.08), 0 6px 14px rgba(0,0,0,0.06);
+    transform:rotate(-1.4deg);
+    max-width:200px;
+    z-index:5;
+    border-left:2px solid rgba(0,0,0,0.08);
+  }
+  .wf-note.r{ transform:rotate(1.6deg); }
+  .wf-note .pin{
+    position:absolute; top:-5px; left:14px;
+    width:10px; height:10px; border-radius:50%;
+    background:#c96442; box-shadow:0 1px 2px rgba(0,0,0,.25);
+  }
+  .wf-note.hide{ display:none; }
+
+  /* Arrow (annotation) */
+  .wf-arrow{
+    position:absolute; pointer-events:none; z-index:4;
+  }
+
+  /* "Hand-drawn" thin divider */
+  .wf-rule{
+    height:1px; background:var(--ink); opacity:.85;
+    border-radius:2px;
+  }
+  .wf-rule.dashed{
+    background:transparent;
+    border-top:1.2px dashed var(--ink);
+    height:0;
+  }
+
+  /* Sketchy button */
+  .wf-btn{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border:1.4px solid var(--ink);
+    border-radius:6px; background:var(--paper);
+    font-family:var(--hand); font-size:13px; color:var(--ink);
+    box-shadow: 1.5px 2px 0 rgba(0,0,0,0.08);
+    cursor:default; user-select:none;
+  }
+  .wf-btn.primary{ background:var(--accent-fill); border-color:var(--accent); color:#1f5b3e; }
+  .wf-btn.dark   { background:#0d0f14; border-color:#2a8f5f; color:#a7d8c2; box-shadow:none; }
+  .wf-btn.ghost  { background:transparent; border-style:dashed; color:var(--ink-2); box-shadow:none; }
+
+  /* Tab strip */
+  .wf-tab{
+    font-family:var(--label); font-size:12px; color:var(--ink-2);
+    padding:4px 8px; border-bottom:2px solid transparent;
+  }
+  .wf-tab.on{
+    color:var(--ink);
+    border-bottom-color:var(--ink);
+  }
+
+  /* Sidebar nav row */
+  .wf-nav{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px;
+    font-family:var(--hand); font-size:14px;
+    border-radius:6px;
+    color:var(--ink-2);
+  }
+  .wf-nav.on{
+    background:var(--paper-2);
+    color:var(--ink);
+    border:1px dashed var(--ink-2);
+  }
+  .wf-nav .ico{
+    width:14px; height:14px; border:1.4px solid currentColor; border-radius:3px;
+    display:inline-block;
+  }
+
+  /* Roughened look (extra noise + slight wobble on borders).
+     Toggled by .rough class on root */
+  .rough .wf-card,
+  .rough .wf-btn,
+  .rough .wf-pill,
+  .rough .wf-tab,
+  .rough .wf-nav.on {
+    filter: url(#wobble);
+  }
+
+  /* Density */
+  .density-compact { --row-h: 22px; }
+  .density-comfy   { --row-h: 30px; }
+  :root            { --row-h: 26px; }
+
+  /* Hide annotations toggle */
+  .no-annotations .wf-note,
+  .no-annotations .wf-arrow{ display:none !important; }
+
+  /* Tablet bezel */
+  .wf-tablet{
+    background:#0a0a0a; border-radius:28px; padding:14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.18), inset 0 0 0 1.5px #2a2a2a;
+  }
+  .wf-tablet .screen{
+    background:#0d0f14; border-radius:14px; overflow:hidden;
+    height:100%;
+  }
+
+  /* Tiny "diagonal slash" overlay for "this could go here" */
+  .wf-ghost-slash{
+    background:
+      repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0 6px, transparent 6px 12px);
+  }
+
+  /* Multi-server color chips */
+  .srv-A{ --srv:#2a8f5f; --srvBg:#d6ecdf; }
+  .srv-B{ --srv:#3b6ec9; --srvBg:#d4e0f3; }
+  .srv-C{ --srv:#c96442; --srvBg:#f1d6cb; }
+  .srv-D{ --srv:#8a5cb5; --srvBg:#e3d7ee; }
+  .srv-chip{
+    display:inline-flex; align-items:center; gap:4px;
+    font-family:var(--label); font-size:10px; color:var(--ink);
+    padding:1px 6px; border-radius:4px;
+    background:var(--srvBg);
+    border:1px solid var(--srv);
+  }
+  .srv-chip .sw{ width:7px; height:7px; border-radius:2px; background:var(--srv); }
+
+  /* Custom scrollbar (dark) used in tablet/deep-dark previews */
+  .scroll-dark::-webkit-scrollbar{ width:6px; height:6px; }
+  .scroll-dark::-webkit-scrollbar-thumb{ background:#2a2f3e; border-radius:3px; }
+
+  /* Hide focus ring noise */
+  *:focus{ outline:none; }
+</style>
+</head>
+<body>
+
+<!-- SVG filter for "hand-drawn wobble" — pulled in only when .rough is on -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wobble" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="2" seed="3" />
+      <feDisplacementMap in="SourceGraphic" scale="1.6" />
+    </filter>
+  </defs>
+</svg>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="liveview-wires.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

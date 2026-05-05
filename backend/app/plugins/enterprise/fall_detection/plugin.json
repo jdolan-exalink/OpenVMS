@@ -1,0 +1,13 @@
+{
+  "name": "fall_detection",
+  "display_name": "Detección de Caídas",
+  "version": "1.0.0",
+  "description": "Detecta caídas analizando la postura corporal con MediaPipe Pose — útil en entornos de tercera edad o zonas de riesgo",
+  "author": "OpenCCTV",
+  "category": "analytics",
+  "requires_gpu": false,
+  "supports_openvino": false,
+  "min_ram_gb": 4,
+  "dependencies": ["mediapipe"],
+  "config_schema": "plugin.py::FallDetectionPlugin.get_config_schema"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "camera_sabotage",
+  "display_name": "Tamper de Cámara",
+  "version": "1.0.0",
+  "description": "Detecta manipulación física de la cámara: tapado, desenfoque abrupto, cambio de escena o pérdida de señal",
+  "author": "Exalink",
+  "category": "analytics",
+  "requires_gpu": false,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": ["scikit-image"],
+  "config_schema": "plugin.py::CameraSabotagePlugin.get_config_schema"
+}

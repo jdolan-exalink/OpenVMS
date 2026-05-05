@@ -1,0 +1,13 @@
+{
+  "name": "face_recognition",
+  "display_name": "Reconocimiento Facial",
+  "version": "1.0.0",
+  "description": "Identifica personas registradas en galería usando InsightFace + búsqueda vectorial con pgvector",
+  "author": "OpenCCTV",
+  "category": "recognition",
+  "requires_gpu": true,
+  "supports_openvino": false,
+  "min_ram_gb": 8,
+  "dependencies": ["insightface", "onnxruntime"],
+  "config_schema": "plugin.py::FaceRecognitionPlugin.get_config_schema"
+}

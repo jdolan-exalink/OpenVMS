@@ -1,0 +1,13 @@
+{
+  "name": "abandoned_object",
+  "display_name": "Objeto Abandonado",
+  "version": "1.0.0",
+  "description": "Detecta objetos detenidos sin dueño mediante tracking YOLO — emite alerta tras N segundos sin movimiento",
+  "author": "OpenCCTV",
+  "category": "analytics",
+  "requires_gpu": true,
+  "supports_openvino": true,
+  "min_ram_gb": 8,
+  "dependencies": ["ultralytics"],
+  "config_schema": "plugin.py::AbandonedObjectPlugin.get_config_schema"
+}

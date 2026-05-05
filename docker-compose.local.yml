@@ -1,0 +1,33 @@
+services:
+
+  # ── Model initializer (production) ──────────────────────────────────────────
+  # Uses host model directory — skips downloads if .initialized flag exists.
+  model-init:
+    volumes:
+      - /root/config/models:/models
+      # Pre-existing InsightFace buffalo_l → model-init finds it, skips download
+      - /root/config/model_cache/insightface:/models/.cache/insightface/models
+
+  # ── Backend (production) ────────────────────────────────────────────────────
+  backend:
+    volumes:
+      - /root/config/models:/models
+      # InsightFace buffalo_l (same path as model-init so face_recognition finds it)
+      - /root/config/model_cache/insightface:/models/.cache/insightface/models
+      # Frigate-detected models (read-only)
+      - /root/frigate-models:/models/frigate:ro
+      # Custom/user-uploaded models (read-only)
+      - /root/Modelos:/models/custom:ro
+      # Video recordings (for playback/export)
+      - /mnt/cctv:/mnt/cctv:ro
+      - /root/config:/root/config
+      # Hardware monitoring (read-only)
+      - /sys/class/hwmon:/sys/class/hwmon:ro
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+    environment:
+      CORS_ORIGINS: '["http://localhost:3010","http://10.1.1.252:3010"]'
+      OME_WEBRTC_BASE: ws://10.1.1.252:3333
+      OME_LLHLS_BASE: http://10.1.1.252:3334

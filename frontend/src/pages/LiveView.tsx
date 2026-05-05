@@ -732,8 +732,10 @@ function LiveStream({
 
   useEffect(() => {
     if (connectionState !== "connecting") return;
-    const iframe = iframeRef.current;
-    if (!iframe) return;
+    // Do NOT check iframeRef.current here — when the component first mounts,
+    // server may not be loaded yet (early return path), so the iframe isn't in
+    // the DOM yet. The ref is accessed lazily inside monitor() instead, so the
+    // interval keeps running until the iframe appears (within the first 4s).
     let checks = 0;
     let lastTime = -1;
     let stableTicks = 0;
@@ -743,13 +745,16 @@ function LiveStream({
       if (Date.now() - mountTime < 4000) return;
       checks += 1;
       try {
-        const video = iframe.contentDocument?.querySelector("video");
-        patchGo2rtcPlayerChrome(iframe);
-        if (video && video.readyState >= 2) {
-          const hasDims = video.videoWidth > 0 || video.videoHeight > 0;
-          const moving = video.currentTime > 0 && video.currentTime !== lastTime;
-          if (moving || hasDims) { lastTime = video.currentTime; stableTicks = 0; setConnectionState("online"); return; }
-          stableTicks += 1;
+        const iframe = iframeRef.current;
+        if (iframe) {
+          const video = iframe.contentDocument?.querySelector("video");
+          patchGo2rtcPlayerChrome(iframe);
+          if (video && video.readyState >= 2) {
+            const hasDims = video.videoWidth > 0 || video.videoHeight > 0;
+            const moving = video.currentTime > 0 && video.currentTime !== lastTime;
+            if (moving || hasDims) { lastTime = video.currentTime; stableTicks = 0; setConnectionState("online"); return; }
+            stableTicks += 1;
+          }
         }
       } catch { /* same-origin defensive */ }
       if (checks >= 64 || stableTicks >= 16) setConnectionState("offline");

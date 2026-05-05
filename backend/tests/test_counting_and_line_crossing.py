@@ -1,7 +1,16 @@
 import pytest
+from unittest.mock import AsyncMock
 
 from app.plugins.enterprise.line_crossing.plugin import LineCrossingPlugin
 from app.plugins.enterprise.people_counting.plugin import PeopleCountingPlugin
+
+
+@pytest.fixture(autouse=True)
+def patch_save_count_event(monkeypatch):
+    async def noop(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(PeopleCountingPlugin, "_save_count_event", noop)
 
 
 @pytest.mark.asyncio

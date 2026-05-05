@@ -7,6 +7,7 @@ import { useEventStore, WsEvent } from "../store/eventStore";
 import EventFiltersBar, { FiltersState } from "../components/events/EventFilters";
 import { EventPopup } from "../components/events/EventCard";
 import { fetchSnapshotWithAuth } from "../utils/snapshot";
+import { pluginKey, pluginMeta } from "../utils/pluginMeta";
 
 // ─── Snapshot thumbnail ──────────────────────────────────────────────────────
 
@@ -55,32 +56,9 @@ const LABEL_COLORS: Record<string, string> = {
   lpr: "#00c9ff", motion: "#5b9dff", fall_detected: "#ef4444",
 };
 
-const PLUGIN_COLORS: Record<string, { color: string; label: string }> = {
-  lpr: { color: "#00c9ff", label: "LPR" },
-  lpr_advanced: { color: "#38bdf8", label: "LPR avanzado" },
-  face_recognition: { color: "#ec4899", label: "Rostros" },
-  ocr_general: { color: "#f97316", label: "OCR" },
-  line_crossing: { color: "#facc15", label: "Cruce línea" },
-  loitering: { color: "#a78bfa", label: "Merodeo" },
-  people_counting: { color: "#22c55e", label: "Conteo" },
-  epp: { color: "#fb7185", label: "EPP" },
-  abandoned_object: { color: "#8b5cf6", label: "Obj. abandonado" },
-  camera_sabotage: { color: "#ef4444", label: "Tamper" },
-  fall_detection: { color: "#dc2626", label: "Caídas" },
-  smoke_fire: { color: "#f59e0b", label: "Humo/Fuego" },
-  ai_summary: { color: "#14b8a6", label: "Resumen IA" },
-  semantic_search: { color: "#6366f1", label: "Búsqueda IA" },
-  notifications: { color: "#0ea5e9", label: "Notificaciones" },
-};
-
-function pluginKey(source?: string | null) {
-  if (!source?.startsWith("plugin:")) return null;
-  return source.slice("plugin:".length);
-}
-
 function eventTheme(ev: VmsEvent) {
-  const key = pluginKey(ev.source);
-  if (key) return PLUGIN_COLORS[key] ?? { color: "#94a3b8", label: key };
+  const meta = pluginMeta(ev.source);
+  if (pluginKey(ev.source)) return meta;
   const color = LABEL_COLORS[ev.label.toLowerCase()] ?? "#8a93a3";
   return { color, label: "Frigate" };
 }

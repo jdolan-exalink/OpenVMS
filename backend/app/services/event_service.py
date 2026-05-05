@@ -324,6 +324,8 @@ async def list_events(
     if filters.source is not None:
         if filters.source == "plugin":
             q = q.where(Event.source.ilike("plugin:%"))
+        elif filters.source == "frigate":
+            q = q.where(or_(Event.source.is_(None), Event.source.not_ilike("plugin:%")))
         else:
             q = q.where(Event.source == filters.source)
     if filters.severity is not None:

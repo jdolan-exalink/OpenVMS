@@ -2,6 +2,7 @@ import { useState } from "react";
 import { EventListParams } from "../../api/events";
 import { Camera } from "../../api/cameras";
 import { FrigateServer } from "../../api/servers";
+import { PLUGIN_SOURCE_OPTIONS } from "../../utils/pluginMeta";
 
 const SELECT = "h-8 rounded border border-[var(--line)] bg-[var(--bg-2)] px-2 text-xs text-[var(--text-1)] outline-none focus:border-[var(--acc)]";
 const DATE_INPUT = "h-8 rounded border border-[var(--line)] bg-[var(--bg-2)] px-2 text-xs text-[var(--text-0)] outline-none focus:border-[var(--acc)]";
@@ -40,6 +41,7 @@ export default function EventFiltersBar({ cameras, servers, onApply }: EventFilt
   const [plate, setPlate] = useState("");
   const [hasClip, setHasClip] = useState<boolean | undefined>(undefined);
   const [isProtected, setIsProtected] = useState<boolean | undefined>(undefined);
+  const [source, setSource] = useState("");
 
   function buildFilters(): FiltersState {
     const f: FiltersState = {};
@@ -51,6 +53,7 @@ export default function EventFiltersBar({ cameras, servers, onApply }: EventFilt
     if (plate)     f.plate   = plate;
     if (hasClip != null) f.has_clip = hasClip;
     if (isProtected != null) f.is_protected = isProtected;
+    if (source)    f.source   = source;
     return f;
   }
 
@@ -58,7 +61,8 @@ export default function EventFiltersBar({ cameras, servers, onApply }: EventFilt
 
   function handleClear() {
     setLabel(""); setCameraId(""); setServerId("");
-    setStartDate(""); setEndDate(""); setPlate(""); setHasClip(undefined); setIsProtected(undefined);
+    setStartDate(""); setEndDate(""); setPlate("");
+    setHasClip(undefined); setIsProtected(undefined); setSource("");
     onApply({});
   }
 
@@ -66,7 +70,7 @@ export default function EventFiltersBar({ cameras, servers, onApply }: EventFilt
     if (e.key === "Enter") handleApply();
   }
 
-  const activeCount = [label, cameraId, serverId, startDate, endDate, plate, hasClip != null, isProtected != null].filter(Boolean).length;
+  const activeCount = [label, cameraId, serverId, startDate, endDate, plate, hasClip != null, isProtected != null, source].filter(Boolean).length;
 
   return (
     <div className="vms-card p-3">
@@ -86,6 +90,20 @@ export default function EventFiltersBar({ cameras, servers, onApply }: EventFilt
         <select value={serverId} onChange={(e) => setServerId(e.target.value)} className={SELECT}>
           <option value="">Todos los servidores</option>
           {servers.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+        </select>
+
+        {/* Source / Plugin */}
+        <select
+          value={source}
+          onChange={(e) => { setSource(e.target.value); }}
+          className={SELECT}
+          style={source && source !== "frigate" && source !== "plugin" && source !== "" ? { borderColor: "#94a3b8" } : {}}
+        >
+          {PLUGIN_SOURCE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
 
         {/* Date range */}

@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useQuery } from "react-query";
 import { useState, useEffect } from "react";
 import { listCameras } from "../../api/cameras";
@@ -6,6 +6,7 @@ import { listServers } from "../../api/servers";
 import { getSidebarPlugins } from "../../api/plugins";
 import { useAuthStore } from "../../store/authStore";
 import { useCameraStore } from "../../store/cameraStore";
+import { useSidebar } from "./SidebarContext";
 import { APP_VERSION } from "../../version";
 
 const coreNavItems = [
@@ -101,9 +102,8 @@ export function loadPluginCounters(): PluginCounters {
 }
 
 export default function Sidebar() {
-  const location = useLocation();
   const user = useAuthStore((state) => state.user);
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, setCollapsed } = useSidebar();
   const [pluginSectionOpen, setPluginSectionOpen] = useState(true);
   const [counters, setCounters] = useState<PluginCounters>({});
 
@@ -178,18 +178,21 @@ export default function Sidebar() {
     setGridCameraIds(next);
   }
 
-  const pageTitle = getPageTitle(location.pathname);
-
   if (collapsed) {
     return (
       <aside className="vms-sidebar collapsed">
-        <div className="flex flex-col items-center gap-3 py-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded bg-[linear-gradient(135deg,#00d084,#00a36a)] text-sm font-black text-[var(--bg-0)]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-              <circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.9" />
-              <circle cx="12" cy="12" r="4" fill="white" opacity="0.6" />
-            </svg>
-          </div>
+        <div className="flex flex-col items-center gap-3 py-1">
+          <button
+            onClick={() => setCollapsed(false)}
+            title="Expandir sidebar"
+            className="flex items-center justify-center rounded-lg transition hover:opacity-80"
+          >
+            <img
+              src="/openvms-logocuadrado.png"
+              alt="OpenVMS"
+              className="h-9 w-9 object-contain"
+            />
+          </button>
         </div>
 
         <nav className="flex flex-col items-center gap-0.5">
@@ -198,6 +201,7 @@ export default function Sidebar() {
               key={item.to}
               to={item.to}
               end={item.to === "/"}
+              title={item.label}
               className={({ isActive }) =>
                 [
                   "flex h-10 w-10 items-center justify-center rounded-lg text-[13px] transition",
@@ -240,15 +244,12 @@ export default function Sidebar() {
         )}
 
         <div className="mt-auto flex flex-col items-center gap-2">
-          <button
-            onClick={() => setCollapsed(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--bg-3)] text-[var(--text-2)] transition hover:bg-[var(--bg-2)] hover:text-[var(--text-0)]"
-            title="Expandir sidebar"
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[linear-gradient(135deg,#5b9dff,#b07cff)] text-[11px] font-bold text-white"
+            title={user?.username ?? "admin"}
           >
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
-              <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+            {initials}
+          </div>
         </div>
       </aside>
     );
@@ -257,30 +258,26 @@ export default function Sidebar() {
   return (
     <aside className="vms-sidebar">
       <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#00d084,#00a36a)] text-sm font-black text-[var(--bg-0)] shadow-[0_0_12px_rgba(0,208,132,0.3)]">
-            <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-              <circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.9" />
-              <circle cx="12" cy="12" r="4" fill="white" opacity="0.6" />
-            </svg>
-          </div>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/openvms-logocuadrado.png"
+            alt="OpenVMS"
+            className="h-8 w-8 object-contain flex-shrink-0"
+          />
           <div>
-            <div className="text-sm font-bold text-[var(--text-0)]">OpenVMS</div>
+            <div className="text-sm font-bold text-[var(--text-0)] leading-tight">OpenVMS</div>
             <div className="mono mt-px rounded bg-[var(--bg-3)] px-1.5 py-px text-[10px] font-semibold text-[var(--acc)]">v{APP_VERSION}</div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="mono text-[10px] text-[var(--text-3)]">{pageTitle}</span>
-          <button
-            onClick={() => setCollapsed(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--bg-3)] text-[var(--text-2)] transition hover:bg-[var(--bg-2)] hover:text-[var(--text-0)]"
-            title="Compactar sidebar"
-          >
-            <svg viewBox="0 0 24 24" fill="none" width="13" height="13">
-              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={() => setCollapsed(true)}
+          className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--bg-3)] text-[var(--text-2)] transition hover:bg-[var(--bg-2)] hover:text-[var(--text-0)]"
+          title="Compactar sidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" width="13" height="13">
+            <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
 
       <nav className="flex flex-col gap-0.5">
@@ -464,20 +461,6 @@ export default function Sidebar() {
       </div>
     </aside>
   );
-}
-
-function getPageTitle(pathname: string): string {
-  if (pathname === "/") return "Dashboard";
-  if (pathname === "/live") return "Vista en Vivo";
-  if (pathname === "/events") return "Eventos";
-  if (pathname === "/playback") return "Reproducción";
-  if (pathname === "/settings") return "Configuración";
-  if (pathname === "/enterprise-analytics") return "Analytics";
-  if (pathname.startsWith("/plugins/")) {
-    const plugin = pathname.split("/plugins/")[1]?.replace(/-/g, " ");
-    return plugin ? plugin.charAt(0).toUpperCase() + plugin.slice(1) : "Plugin";
-  }
-  return "";
 }
 
 function serverClass(index: number) {

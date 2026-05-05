@@ -89,7 +89,11 @@ a {
   inset: 0 auto 0 0;
   z-index: 30;
   width: 212px;
-  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  will-change: width;
+  transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              padding 280ms cubic-bezier(0.4, 0, 0.2, 1),
+              gap 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .vms-sidebar.collapsed {
@@ -109,7 +113,8 @@ a {
   margin-left: 212px;
   display: flex;
   flex-direction: column;
-  transition: margin-left 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: margin-left;
+  transition: margin-left 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .vms-topbar {

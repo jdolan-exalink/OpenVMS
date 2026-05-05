@@ -3,6 +3,7 @@ import { useQuery } from "react-query";
 import { listServers } from "../../api/servers";
 import { useAuthStore } from "../../store/authStore";
 import { useEventStore } from "../../store/eventStore";
+import { useSidebar } from "./SidebarContext";
 
 const mobileItems = [
   { to: "/", label: "Dashboard" },
@@ -22,6 +23,7 @@ export default function Topbar() {
   const unread = useEventStore((s) => s.unread);
   const isPanelOpen = useEventStore((s) => s.isPanelOpen);
   const togglePanel = useEventStore((s) => s.togglePanel);
+  const { collapsed, setCollapsed } = useSidebar();
   const servers = serversQuery.data ?? [];
   const enabledServers = servers.filter((server) => server.enabled).length;
 
@@ -32,6 +34,18 @@ export default function Topbar() {
 
   return (
     <header className="vms-topbar">
+      {collapsed && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="vms-btn !px-2 shrink-0"
+          title="Expandir sidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15">
+            <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
       <div className="min-w-0">
         <h1 className="m-0 text-[17px] font-semibold text-[var(--text-0)]">{page.title}</h1>
         <div className="mono text-xs text-[var(--text-3)]">/ {page.subtitle}</div>

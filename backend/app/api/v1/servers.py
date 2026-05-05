@@ -150,8 +150,20 @@ async def get_server_status(
     cameras: list[str] = []
     if result.get("online"):
         try:
-            cam_data = await FrigateService.get_cameras_cached(server, redis)
-            cameras = list(cam_data.keys())
+            # Use Frigate /api/stats to get real-time camera_fps per camera.
+            # camera_fps > 0 means the camera stream is actually active.
+            stats = await FrigateService.get_client(server).get_stats()
+            cam_stats: dict = stats.get("cameras", {})
+            cameras = [
+                name for name, data in cam_stats.items()
+                if isinstance(data, dict) and (data.get("camera_fps") or 0) > 0
+            ]
+            # Fallback: if stats returned no fps data, use config cameras list.
+            if not cameras and cam_stats:
+                cameras = list(cam_stats.keys())
+            elif not cam_stats:
+                cam_data = await FrigateService.get_cameras_cached(server, redis)
+                cameras = list(cam_data.keys())
             server.last_seen = datetime.now(timezone.utc)
             await db.commit()
         except Exception:

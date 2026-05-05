@@ -55,6 +55,7 @@ class EventFilters(BaseModel):
     zone: str | None = None
     score_min: float | None = None
     has_clip: bool | None = None
+    has_snapshot: bool | None = None
     cursor: str | None = None
     limit: int = Field(default=50, ge=1, le=1000)
     source: str | None = None

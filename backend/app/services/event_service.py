@@ -163,6 +163,10 @@ async def _handle_event(
         log.warning("Event %s missing start_time, skipping", frigate_event_id)
         return
 
+    if not has_clip and not has_snapshot:
+        log.debug("Event %s has no clip and no snapshot, skipping", frigate_event_id)
+        return
+
     # Upsert — on conflict update mutable fields
     stmt = (
         pg_insert(Event)
@@ -313,6 +317,10 @@ async def list_events(
         q = q.where(Event.score >= Decimal(str(filters.score_min)))
     if filters.has_clip is not None:
         q = q.where(Event.has_clip == filters.has_clip)
+    if filters.has_snapshot is not None:
+        q = q.where(Event.has_snapshot == filters.has_snapshot)
+    if filters.has_clip is None and filters.has_snapshot is None:
+        q = q.where(or_(Event.has_clip == True, Event.has_snapshot == True))
     if filters.source is not None:
         if filters.source == "plugin":
             q = q.where(Event.source.ilike("plugin:%"))

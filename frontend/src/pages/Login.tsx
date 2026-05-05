@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
+import { APP_VERSION } from "../version";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -35,11 +36,17 @@ export default function Login() {
           <div className="relative z-10 flex h-full flex-col">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded bg-[linear-gradient(135deg,#00d084,#00a36a)] text-base font-black text-[var(--bg-0)]">
-                ◉
+                <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+                  <circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.9" />
+                  <circle cx="12" cy="12" r="4" fill="white" opacity="0.6" />
+                </svg>
               </div>
               <div>
                 <div className="text-sm font-semibold text-[var(--text-0)]">OpenVMS</div>
-                <div className="mono text-[10px] text-[var(--text-3)]">video management system</div>
+                <div className="flex items-center gap-2">
+                  <div className="mono text-[10px] text-[var(--text-3)]">video management system</div>
+                  <span className="mono rounded bg-[var(--bg-3)] px-1 py-px text-[9px] font-semibold text-[var(--acc)]">v{APP_VERSION}</span>
+                </div>
               </div>
             </div>
 
@@ -78,7 +85,7 @@ export default function Login() {
         <section className="flex items-center justify-center px-5 py-10">
           <div className="w-full max-w-[390px]">
             <div className="mb-8 lg:hidden">
-              <div className="text-sm font-semibold uppercase tracking-wide text-[var(--acc)]">OpenVMS</div>
+              <div className="text-sm font-semibold uppercase tracking-wide text-[var(--acc)]">OpenVMS <span className="font-mono text-[var(--text-3)]">v{APP_VERSION}</span></div>
               <h1 className="mt-2 text-2xl font-semibold text-[var(--text-0)]">Iniciar sesion</h1>
             </div>
 

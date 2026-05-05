@@ -181,15 +181,15 @@ class SemanticSearchPlugin(BasePlugin):
                 embedding_str = "[" + ",".join(map(str, image_embedding)) + "]"
                 await db.execute(text("""
                     INSERT INTO semantic_events
-                    (camera_id, event_time, image_embedding, thumbnail_bytes, description, metadata)
-                    VALUES (:camera_id, :event_time, :embedding, :thumbnail, :description, :metadata)
+                    (camera_id, event_time, image_embedding, thumbnail_bytes, description, extra_data)
+                    VALUES (:camera_id, :event_time, :embedding, :thumbnail, :description, :extra_data)
                 """), {
                     "camera_id": camera_name,
                     "event_time": datetime.fromtimestamp(timestamp, tz=timezone.utc),
                     "embedding": embedding_str,
                     "thumbnail": thumbnail_bytes,
                     "description": description,
-                    "metadata": json.dumps({"source": "semantic_search_plugin"}),
+                    "extra_data": json.dumps({"source": "semantic_search_plugin"}),
                 })
                 await db.commit()
         except Exception as exc:
@@ -220,7 +220,7 @@ class SemanticSearchPlugin(BasePlugin):
                 sql = f"""
                     SELECT id, camera_id, event_time, description,
                            1 - (image_embedding <=> '{embedding_str}'::vector) AS similarity,
-                           metadata
+                           extra_data
                     FROM semantic_events
                     WHERE image_embedding IS NOT NULL
                       AND 1 - (image_embedding <=> '{embedding_str}'::vector) > :threshold
@@ -282,7 +282,7 @@ class SemanticSearchPlugin(BasePlugin):
                 sql = f"""
                     SELECT id, camera_id, event_time, description,
                            1 - (image_embedding <=> '{embedding_str}'::vector) AS similarity,
-                           metadata
+                           extra_data
                     FROM semantic_events
                     WHERE 1 - (image_embedding <=> '{embedding_str}'::vector) > :threshold
                 """

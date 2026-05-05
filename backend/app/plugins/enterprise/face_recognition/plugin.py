@@ -327,13 +327,13 @@ class FaceRecognitionPlugin(BasePlugin):
                 from sqlalchemy import text
                 embedding_str = "[" + ",".join(map(str, embedding)) + "]"
                 await db.execute(text("""
-                    INSERT INTO face_embeddings (person_name, embedding, camera_id, image_bytes, metadata)
-                    VALUES ('unknown', :embedding, :camera_id, :image_bytes, :metadata)
+                    INSERT INTO face_embeddings (person_name, embedding, camera_id, image_bytes, extra_data)
+                    VALUES ('unknown', :embedding, :camera_id, :image_bytes, :extra_data)
                 """), {
                     "embedding": embedding_str,
                     "camera_id": camera_name,
                     "image_bytes": image_bytes,
-                    "metadata": json.dumps({
+                    "extra_data": json.dumps({
                         "det_score": float(face.det_score) if hasattr(face, 'det_score') else 0,
                         "bbox": face.bbox.tolist() if hasattr(face.bbox, 'tolist') else [],
                     }),
@@ -375,14 +375,14 @@ class FaceRecognitionPlugin(BasePlugin):
                 from sqlalchemy import text
                 embedding_str = "[" + ",".join(map(str, embedding_list)) + "]"
                 await db.execute(text("""
-                    INSERT INTO face_embeddings (person_name, person_id, embedding, image_bytes, metadata)
-                    VALUES (:name, :person_id, :embedding, :image_bytes, :metadata)
+                    INSERT INTO face_embeddings (person_name, person_id, embedding, image_bytes, extra_data)
+                    VALUES (:name, :person_id, :embedding, :image_bytes, :extra_data)
                 """), {
                     "name": person_name,
                     "person_id": person_id,
                     "embedding": embedding_str,
                     "image_bytes": image_bytes,
-                    "metadata": json.dumps(detected_metadata),
+                    "extra_data": json.dumps(detected_metadata),
                 })
                 await db.commit()
             return True

@@ -53,7 +53,7 @@ class FaceEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")
     )
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    extra_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class SemanticEvent(Base):
@@ -66,7 +66,4 @@ class SemanticEvent(Base):
     image_embedding: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True)
     text_embedding: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True)
     thumbnail_bytes: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True)
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")
-    )
+    extra_data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

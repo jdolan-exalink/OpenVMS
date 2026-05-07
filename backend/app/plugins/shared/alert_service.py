@@ -1,7 +1,9 @@
 import logging
 import json
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import structlog
@@ -28,8 +30,23 @@ class AlertService:
         severity: str,
         data: dict,
         snapshot_bytes: Optional[bytes] = None,
+        clip_path: Optional[str] = None,
     ) -> Optional[int]:
+        if not snapshot_bytes:
+            log.warning(
+                "plugin=%s alert_type=%s: no snapshot provided — event dropped",
+                plugin_name, alert_type,
+            )
+            return None
+
         event_id = None
+        snapshot_path = AlertService._save_plugin_snapshot(plugin_name, alert_type, snapshot_bytes)
+        if snapshot_path is None:
+            log.warning(
+                "plugin=%s alert_type=%s: snapshot could not be saved — event dropped",
+                plugin_name, alert_type,
+            )
+            return None
 
         async with AsyncSessionLocal() as db:
             try:
@@ -42,10 +59,13 @@ class AlertService:
                 event = EventModel(
                     camera_id=camera_uuid,
                     label=alert_type,
-                    source="plugin",
+                    source=f"plugin:{plugin_name}",
                     severity=severity,
                     start_time=datetime.now(timezone.utc),
-                    has_snapshot=False,
+                    has_clip=bool(clip_path),
+                    has_snapshot=True,
+                    snapshot_path=snapshot_path,
+                    clip_path=clip_path,
                     extra_metadata={
                         "plugin": plugin_name,
                         "alert_type": alert_type,
@@ -68,7 +88,7 @@ class AlertService:
                     camera_id,
                     event_id,
                     data,
-                    False,
+                    True,
                 ))
             except Exception as exc:
                 log.error("Failed to broadcast plugin alert via WebSocket: %s", exc)
@@ -87,7 +107,7 @@ class AlertService:
                         camera_id,
                         event_id,
                         data,
-                        False,
+                        True,
                     ),
                     default=str,
                 ),
@@ -96,6 +116,23 @@ class AlertService:
             log.error("Failed to publish plugin alert via Redis: %s", exc)
 
         return event_id
+
+    @staticmethod
+    def _save_plugin_snapshot(plugin_name: str, alert_type: str, snapshot_bytes: bytes) -> str | None:
+        try:
+            base_dir = Path(os.getenv("PLUGIN_SNAPSHOT_DIR", "/tmp/exports/plugin_snapshots"))
+            safe_plugin = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in plugin_name)
+            safe_type = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in alert_type)
+            day = datetime.now(timezone.utc).strftime("%Y/%m/%d")
+            out_dir = base_dir / safe_plugin / day
+            out_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{datetime.now(timezone.utc).strftime('%H%M%S_%f')}_{safe_type}.jpg"
+            path = out_dir / filename
+            path.write_bytes(snapshot_bytes)
+            return str(path)
+        except Exception as exc:
+            log.error("Failed to save plugin snapshot: %s", exc)
+            return None
 
     @staticmethod
     def _plugin_alert_payload(
@@ -127,7 +164,15 @@ class AlertService:
         source: str,
         severity: str,
         metadata: dict,
+        snapshot_bytes: Optional[bytes] = None,
     ) -> Optional[int]:
+        if not snapshot_bytes:
+            log.warning("source=%s label=%s: no snapshot provided — event dropped", source, label)
+            return None
+        snapshot_path = AlertService._save_plugin_snapshot(source.replace("plugin:", ""), label, snapshot_bytes)
+        if snapshot_path is None:
+            log.warning("source=%s label=%s: snapshot could not be saved — event dropped", source, label)
+            return None
         async with AsyncSessionLocal() as db:
             try:
                 camera_uuid = None
@@ -139,10 +184,11 @@ class AlertService:
                 event = EventModel(
                     camera_id=camera_uuid,
                     label=label,
-                    source=source,
+                    source=source if source.startswith("plugin:") else source,
                     severity=severity,
                     start_time=datetime.now(timezone.utc),
-                    has_snapshot=False,
+                    has_snapshot=True,
+                    snapshot_path=snapshot_path,
                     extra_metadata=metadata,
                 )
                 db.add(event)

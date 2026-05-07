@@ -24,9 +24,10 @@ async def test_lpr_on_load_normalizes_config():
 async def test_lpr_normalizes_plate_valid():
     plugin = LPRPlugin()
     await plugin.on_load({})
-    assert plugin._normalize_plate("ABC123") == "ABC123"
-    assert plugin._normalize_plate("abc 123") == "ABC123"
-    assert plugin._normalize_plate("  XYZ999  ") == "XYZ999"
+    assert plugin._normalize_plate("ABC123")["plate"] == "ABC123"
+    assert plugin._normalize_plate("abc 123")["plate"] == "ABC123"
+    assert plugin._normalize_plate("  XYZ999  ")["plate"] == "XYZ999"
+    assert plugin._normalize_plate("AB0I2CD")["plate"] == "AB012CD"
 
 
 @pytest.mark.asyncio
@@ -58,6 +59,8 @@ async def test_lpr_get_config_schema():
     assert "properties" in schema
     assert "detection_cooldown" in schema["properties"]
     assert "alert_cooldown" in schema["properties"]
+    assert "country" in schema["properties"]
+    assert "min_frames" in schema["properties"]
 
 
 # ── LPR Advanced ───────────────────────────────────────────────────────────────
@@ -79,6 +82,18 @@ async def test_lpr_advanced_get_config_schema():
     schema = plugin.get_config_schema()
     assert schema["type"] == "object"
     assert "properties" in schema
+    assert "min_frames" in schema["properties"]
+    assert "dedupe_window" in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_lpr_advanced_missing_model_sets_correct_state():
+    plugin = LPRAdvancedPlugin()
+    await plugin.on_load({"plate_model_path": "/models/nonexistent_model.onnx"})
+    assert plugin._plate_engine is None
+    assert plugin._engine_status["state"] == "missing_model"
+    assert len(plugin._engine_status.get("missing", [])) == 1
+    assert "model_file" in plugin._engine_status["missing"][0]["type"]
 
 
 @pytest.mark.asyncio

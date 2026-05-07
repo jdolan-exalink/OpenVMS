@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select, or_, and_, tuple_
+from sqlalchemy import select, or_, and_, tuple_, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -163,8 +163,8 @@ async def _handle_event(
         log.warning("Event %s missing start_time, skipping", frigate_event_id)
         return
 
-    if not has_clip and not has_snapshot:
-        log.debug("Event %s has no clip and no snapshot, skipping", frigate_event_id)
+    if not has_snapshot:
+        log.debug("Event %s has no snapshot, skipping", frigate_event_id)
         return
 
     # Upsert — on conflict update mutable fields
@@ -297,41 +297,7 @@ async def _handle_event(
 async def list_events(
     db: AsyncSession, filters: EventFilters
 ) -> CursorPage[EventResponse]:
-    q = select(Event).order_by(Event.start_time.desc(), Event.id.desc())
-
-    if filters.camera_id is not None:
-        q = q.where(Event.camera_id == filters.camera_id)
-    if filters.server_id is not None:
-        q = q.where(Event.server_id == filters.server_id)
-    if filters.label is not None:
-        q = q.where(Event.label == filters.label)
-    if filters.plate is not None:
-        q = q.where(Event.plate_number.ilike(f"%{filters.plate}%"))
-    if filters.start is not None:
-        q = q.where(Event.start_time >= filters.start)
-    if filters.end is not None:
-        q = q.where(Event.start_time <= filters.end)
-    if filters.zone is not None:
-        q = q.where(Event.zones.contains([filters.zone]))
-    if filters.score_min is not None:
-        q = q.where(Event.score >= Decimal(str(filters.score_min)))
-    if filters.has_clip is not None:
-        q = q.where(Event.has_clip == filters.has_clip)
-    if filters.has_snapshot is not None:
-        q = q.where(Event.has_snapshot == filters.has_snapshot)
-    if filters.has_clip is None and filters.has_snapshot is None:
-        q = q.where(or_(Event.has_clip == True, Event.has_snapshot == True))
-    if filters.source is not None:
-        if filters.source == "plugin":
-            q = q.where(Event.source.ilike("plugin:%"))
-        elif filters.source == "frigate":
-            q = q.where(or_(Event.source.is_(None), Event.source.not_ilike("plugin:%")))
-        else:
-            q = q.where(Event.source == filters.source)
-    if filters.severity is not None:
-        q = q.where(Event.severity == filters.severity)
-    if filters.is_protected is not None:
-        q = q.where(Event.is_protected == filters.is_protected)
+    q = _apply_event_filters(select(Event), filters).order_by(Event.start_time.desc(), Event.id.desc())
 
     # Keyset cursor: (start_time, id) < (cursor_start_time, cursor_id)
     if filters.cursor:
@@ -363,3 +329,57 @@ async def list_events(
         items=[EventResponse.model_validate(e) for e in items],
         next_cursor=next_cursor,
     )
+
+
+async def count_events(db: AsyncSession, filters: EventFilters) -> int:
+    q = _apply_event_filters(select(func.count()).select_from(Event), filters)
+    result = await db.execute(q)
+    return int(result.scalar_one())
+
+
+def _apply_event_filters(q, filters: EventFilters):
+    if filters.camera_id is not None:
+        q = q.where(Event.camera_id == filters.camera_id)
+    if filters.server_id is not None:
+        q = q.where(Event.server_id == filters.server_id)
+    if filters.label is not None:
+        q = q.where(Event.label == filters.label)
+    if filters.plate is not None:
+        q = q.where(Event.plate_number.ilike(f"%{filters.plate}%"))
+    if filters.start is not None:
+        q = q.where(Event.start_time >= filters.start)
+    if filters.end is not None:
+        q = q.where(Event.start_time <= filters.end)
+    if filters.zone is not None:
+        q = q.where(Event.zones.contains([filters.zone]))
+    if filters.score_min is not None:
+        q = q.where(Event.score >= Decimal(str(filters.score_min)))
+    if filters.has_clip is not None:
+        q = q.where(Event.has_clip == filters.has_clip)
+    if filters.has_snapshot is not None:
+        q = q.where(Event.has_snapshot == filters.has_snapshot)
+    if filters.has_clip is None and filters.has_snapshot is None:
+        q = q.where(or_(
+            Event.has_clip == True,
+            Event.has_snapshot == True,
+            Event.source == "plugin",
+            Event.source.ilike("plugin:%"),
+        ))
+    if filters.source is not None:
+        if filters.source == "plugin":
+            q = q.where(or_(Event.source == "plugin", Event.source.ilike("plugin:%")))
+        elif filters.source == "frigate":
+            q = q.where(or_(Event.source.is_(None), Event.source.not_ilike("plugin:%")))
+        elif filters.source.startswith("plugin:"):
+            plugin_name = filters.source.removeprefix("plugin:")
+            q = q.where(or_(
+                Event.source == filters.source,
+                and_(Event.source == "plugin", Event.extra_metadata["plugin"].astext == plugin_name),
+            ))
+        else:
+            q = q.where(Event.source == filters.source)
+    if filters.severity is not None:
+        q = q.where(Event.severity == filters.severity)
+    if filters.is_protected is not None:
+        q = q.where(Event.is_protected == filters.is_protected)
+    return q

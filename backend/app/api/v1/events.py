@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +16,42 @@ from app.services import event_service
 from app.services.frigate_service import FrigateService
 
 router = APIRouter()
+
+
+def _event_filters(
+    camera_id: uuid.UUID | None = None,
+    server_id: uuid.UUID | None = None,
+    label: str | None = None,
+    plate: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    zone: str | None = None,
+    score_min: float | None = None,
+    has_clip: bool | None = None,
+    has_snapshot: bool | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
+    source: str | None = None,
+    severity: str | None = None,
+    is_protected: bool | None = None,
+) -> EventFilters:
+    return EventFilters(
+        camera_id=camera_id,
+        server_id=server_id,
+        label=label,
+        plate=plate,
+        start=start,
+        end=end,
+        zone=zone,
+        score_min=score_min,
+        has_clip=has_clip,
+        has_snapshot=has_snapshot,
+        cursor=cursor,
+        limit=limit,
+        source=source,
+        severity=severity,
+        is_protected=is_protected,
+    )
 
 
 @router.get("", response_model=CursorPage[EventResponse])
@@ -37,7 +74,7 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    filters = EventFilters(
+    filters = _event_filters(
         camera_id=camera_id,
         server_id=server_id,
         label=label,
@@ -55,6 +92,42 @@ async def list_events(
         is_protected=is_protected,
     )
     return await event_service.list_events(db, filters)
+
+
+@router.get("/count")
+async def count_events(
+    camera_id: uuid.UUID | None = Query(None),
+    server_id: uuid.UUID | None = Query(None),
+    label: str | None = Query(None),
+    plate: str | None = Query(None),
+    start: datetime | None = Query(None),
+    end: datetime | None = Query(None),
+    zone: str | None = Query(None),
+    score_min: float | None = Query(None),
+    has_clip: bool | None = Query(None),
+    has_snapshot: bool | None = Query(None),
+    source: str | None = Query(None),
+    severity: str | None = Query(None),
+    is_protected: bool | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    filters = _event_filters(
+        camera_id=camera_id,
+        server_id=server_id,
+        label=label,
+        plate=plate,
+        start=start,
+        end=end,
+        zone=zone,
+        score_min=score_min,
+        has_clip=has_clip,
+        has_snapshot=has_snapshot,
+        source=source,
+        severity=severity,
+        is_protected=is_protected,
+    )
+    return {"count": await event_service.count_events(db, filters)}
 
 
 @router.get("/{event_id}", response_model=EventResponse)
@@ -95,10 +168,42 @@ async def get_event_snapshot(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    evt, server = await _get_frigate_server(event_id, db)
+    result = await db.execute(select(Event).where(Event.id == event_id))
+    evt = result.scalar_one_or_none()
+    if evt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    if evt.snapshot_path:
+        path = Path(evt.snapshot_path)
+        if path.exists() and path.is_file():
+            return FileResponse(path, media_type="image/jpeg")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot file not found")
+    source_event_id = (evt.extra_metadata or {}).get("source_event_id")
+    if source_event_id:
+        try:
+            source_event_id = int(source_event_id)
+        except (TypeError, ValueError):
+            source_event_id = None
+        if source_event_id and source_event_id != evt.id:
+            source_result = await db.execute(select(Event).where(Event.id == source_event_id))
+            source_evt = source_result.scalar_one_or_none()
+            if source_evt:
+                evt = source_evt
+                if evt.snapshot_path:
+                    path = Path(evt.snapshot_path)
+                    if path.exists() and path.is_file():
+                        return FileResponse(path, media_type="image/jpeg")
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot file not found")
+    if evt.frigate_event_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No snapshot available")
+
+    server_result = await db.execute(select(FrigateServer).where(FrigateServer.id == evt.server_id))
+    server = server_result.scalar_one_or_none()
+    if server is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
     try:
         resp = await FrigateService.get_client(server).get(
-            f"/api/events/{evt.frigate_event_id}/snapshot.jpg"
+            f"/api/events/{evt.frigate_event_id}/snapshot.jpg",
+            params={"bbox": "1"},
         )
         resp.raise_for_status()
     except Exception as exc:
@@ -112,6 +217,16 @@ async def get_event_clip(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    result = await db.execute(select(Event).where(Event.id == event_id))
+    local_evt = result.scalar_one_or_none()
+    if local_evt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    if local_evt.clip_path:
+        path = Path(local_evt.clip_path)
+        if path.exists() and path.is_file():
+            return FileResponse(path, media_type="video/mp4")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip file not found")
+
     evt, server = await _get_frigate_server(event_id, db)
 
     async def _stream():

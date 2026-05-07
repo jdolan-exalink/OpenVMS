@@ -37,23 +37,27 @@ FLAG_FILE = MODELS_DIR / ".initialized"
 
 # HuggingFace models (public, no auth required).
 # Format: (destination_filename, hf_repo_id, hf_filename)
+# NOTE: The LPR model is handled separately by download_lpr_model() below
+# because it needs a PT→ONNX export fallback.
 HF_YOLO_MODELS: list[tuple[str, str, str]] = []
 
 # Plugins that use a generic YOLOv8n person/object detector as base.
-# epp: uses HSV color analysis for helmet/vest detection — only needs person bboxes.
-# abandoned_object: filters vehicles/persons via excluded_labels, tracks remaining objects.
-# smoke_fire: yolov8n.pt is a placeholder — replace with a fire/smoke-trained model
-#             (e.g. from Roboflow Universe) for production use.
 YOLOV8N_ALIASES = [
     "epp_yolo.pt",
     "abandoned_object_yolo.pt",
-    "smoke_fire_yolo.pt",  # placeholder — no public fire/smoke YOLO without auth
+    "smoke_fire_yolo.pt",  # placeholder — replace with a fire/smoke-trained model
 ]
 
 # Direct URL for YOLOv8n base weights (stable Ultralytics release)
 YOLOV8N_URL = (
     "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt"
 )
+
+# LPR model — YOLOv8n fine-tuned on license plate detection (class: "license-plate")
+# Produces /models/license_plate_detector.onnx for CPU inference via ONNXRuntime.
+_LPR_HF_REPO = "keremberke/yolov8n-license-plate-detection"
+_LPR_ONNX_DEST = "license_plate_detector.onnx"
+_LPR_PT_DEST = "license_plate_detector.pt"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,21 +72,41 @@ def _human_size(n: int) -> str:
 
 def _download_url(url: str, dest: Path, label: str) -> bool:
     log.info("Downloading %s …", label)
+    tmp = dest.with_suffix(".tmp")
     try:
-        tmp = dest.with_suffix(".tmp")
         urllib.request.urlretrieve(url, str(tmp))
         tmp.rename(dest)
         log.info("  ✓ %s saved (%s)", label, _human_size(dest.stat().st_size))
         return True
     except Exception as exc:
         log.warning("  ✗ %s failed: %s", label, exc)
-        if tmp.exists():
-            tmp.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         return False
 
 
 def _hf_url(repo_id: str, filename: str) -> str:
     return f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+
+
+def _export_pt_to_onnx(pt_path: Path, onnx_dest: Path) -> bool:
+    """Export a YOLO .pt model to ONNX using ultralytics. Returns True on success."""
+    log.info("Exporting %s → ONNX (this takes ~30s on first run) …", pt_path.name)
+    try:
+        from ultralytics import YOLO
+        model = YOLO(str(pt_path))
+        model.export(format="onnx", opset=17, simplify=True)
+        # ultralytics places the export alongside the source file with .onnx suffix
+        auto_path = pt_path.with_suffix(".onnx")
+        if auto_path.exists():
+            if auto_path != onnx_dest:
+                shutil.move(str(auto_path), str(onnx_dest))
+            log.info("  ✓ %s ready (%s)", onnx_dest.name, _human_size(onnx_dest.stat().st_size))
+            return True
+        log.warning("  ✗ export did not produce %s", auto_path)
+        return False
+    except Exception as exc:
+        log.warning("  ✗ ONNX export failed: %s", exc)
+        return False
 
 
 # ── Download steps ────────────────────────────────────────────────────────────
@@ -101,8 +125,7 @@ def download_hf_models() -> None:
         if dest.exists():
             log.info("  ✓ %s already present", dest_name)
             continue
-        url = _hf_url(repo_id, filename)
-        _download_url(url, dest, f"{dest_name} ({repo_id})")
+        _download_url(_hf_url(repo_id, filename), dest, f"{dest_name} ({repo_id})")
 
 
 def create_yolov8n_aliases() -> None:
@@ -122,16 +145,56 @@ def create_yolov8n_aliases() -> None:
             log.warning("  ✗ %s: %s", alias, exc)
 
 
+def download_lpr_model() -> bool:
+    """Ensure /models/license_plate_detector.onnx exists for the lpr_advanced plugin.
+
+    Strategy (tries each step until one succeeds):
+      1. Skip if .onnx already present.
+      2. Download LP-specific ONNX directly from HuggingFace.
+      3. Download LP-specific .pt from HuggingFace and export to ONNX.
+      4. Export the already-present yolov8n.pt as a vehicle-mode fallback.
+         In this mode the plugin OCRs the lower portion of detected vehicles
+         instead of dedicated plate detections — fully functional without any
+         external download.
+    """
+    onnx_dest = MODELS_DIR / _LPR_ONNX_DEST
+    if onnx_dest.exists():
+        log.info("  ✓ %s already present", _LPR_ONNX_DEST)
+        return True
+
+    log.info("── LPR model ──")
+
+    # Attempt 1: direct ONNX from HuggingFace
+    if _download_url(_hf_url(_LPR_HF_REPO, "best.onnx"), onnx_dest, f"{_LPR_ONNX_DEST} (direct ONNX)"):
+        return True
+
+    # Attempt 2: download .pt then export
+    pt_dest = MODELS_DIR / _LPR_PT_DEST
+    if not pt_dest.exists():
+        _download_url(_hf_url(_LPR_HF_REPO, "best.pt"), pt_dest, f"{_LPR_PT_DEST} (LPR base)")
+    if pt_dest.exists() and _export_pt_to_onnx(pt_dest, onnx_dest):
+        return True
+
+    # Attempt 3: export yolov8n.pt → license_plate_detector.onnx (vehicle-mode fallback)
+    yolov8n = MODELS_DIR / "yolov8n.pt"
+    if yolov8n.exists():
+        log.info("HuggingFace unavailable — exporting yolov8n.pt as vehicle-mode LPR fallback …")
+        if _export_pt_to_onnx(yolov8n, onnx_dest):
+            log.info("  ✓ %s ready (vehicle+OCR mode — replace with a LP-specific model for better accuracy)", _LPR_ONNX_DEST)
+            return True
+
+    log.warning("  ✗ LPR model setup failed — lpr_advanced plugin will not detect plates")
+    return False
+
+
 def setup_paddleocr_cache() -> None:
     """Redirect ~/.paddleocr → /models/.cache/paddleocr so it persists across restarts."""
-    import os
     paddle_cache = CACHE_DIR / "paddleocr"
     paddle_cache.mkdir(parents=True, exist_ok=True)
     paddle_home = Path.home() / ".paddleocr"
     if paddle_home.is_symlink() and paddle_home.resolve() == paddle_cache.resolve():
         return
     if paddle_home.exists() and not paddle_home.is_symlink():
-        # Move existing downloads into the persistent cache
         try:
             for item in paddle_home.iterdir():
                 dest = paddle_cache / item.name
@@ -151,8 +214,6 @@ def setup_paddleocr_cache() -> None:
 def prewarm_clip() -> None:
     clip_cache = CACHE_DIR / "clip"
     clip_cache.mkdir(parents=True, exist_ok=True)
-
-    # Check if already downloaded
     existing = list(clip_cache.glob("ViT-B-32*.pt"))
     if existing:
         log.info("  ✓ CLIP ViT-B/32 already cached")
@@ -189,8 +250,6 @@ def prewarm_insightface() -> None:
 def prewarm_paddleocr() -> None:
     paddle_dir = CACHE_DIR / "paddleocr"
     paddle_dir.mkdir(parents=True, exist_ok=True)
-    # PaddleOCR caches to ~/.paddleocr — we redirect via symlink in entrypoint.sh
-    # Here we just trigger the download so it lands in the persisted volume
     existing_en = list(paddle_dir.glob("**/en_PP*"))
     if existing_en:
         log.info("  ✓ PaddleOCR (en) already cached")
@@ -226,25 +285,28 @@ def main() -> None:
         log.info("SKIP_MODEL_DOWNLOAD set — exiting")
         return
 
-    if FLAG_FILE.exists() and not force:
-        log.info("Models already initialized (%s exists) — skipping", FLAG_FILE)
-        log.info("Set FORCE_MODEL_DOWNLOAD=1 to re-run downloads.")
-        return
-
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    log.info("=== OpenCCTV Model Initializer ===")
-    log.info("Models dir : %s", MODELS_DIR)
-    log.info("Cache dir  : %s", CACHE_DIR)
-
-    # ── YOLO weights ──────────────────────────────────────────────────────────
+    # ── Phase 1: YOLO/model file downloads — always run, idempotent ─────────────
+    # Fast (file-existence checks). Runs every deploy so newly added models are
+    # picked up even when the .initialized flag already exists.
     log.info("── YOLO weights ──")
     download_yolov8n()
     download_hf_models()
     create_yolov8n_aliases()
+    download_lpr_model()
 
-    # ── Auto-download libraries ───────────────────────────────────────────────
+    # ── Phase 2: Heavyweight ML library initialization — run only once ───────────
+    if FLAG_FILE.exists() and not force:
+        log.info("ML libraries already initialized (%s exists) — done", FLAG_FILE)
+        log.info("Set FORCE_MODEL_DOWNLOAD=1 to re-run library pre-warming.")
+        return
+
+    log.info("=== OpenCCTV Model Initializer (first run) ===")
+    log.info("Models dir : %s", MODELS_DIR)
+    log.info("Cache dir  : %s", CACHE_DIR)
+
     log.info("── ML libraries ──")
     setup_paddleocr_cache()
     prewarm_clip()
@@ -252,7 +314,6 @@ def main() -> None:
     prewarm_paddleocr()
     prewarm_mediapipe()
 
-    # Mark as done
     FLAG_FILE.write_text("initialized\n")
     log.info("=== Done — wrote %s ===", FLAG_FILE)
 

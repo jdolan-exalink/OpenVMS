@@ -185,6 +185,42 @@ def _igpu_info() -> dict[str, Any] | None:
     return None
 
 
+# ── TPU / accelerators ────────────────────────────────────────────────────────
+
+def _tpu_stats() -> list[dict[str, Any]]:
+    devices: list[dict[str, Any]] = []
+    for path in ("/dev/apex_0", "/dev/apex_1", "/dev/apex_2", "/dev/apex_3"):
+        if os.path.exists(path):
+            devices.append({
+                "name": "Google Coral Edge TPU",
+                "type": "pci/apex",
+                "path": path,
+                "available": True,
+                "util_pct": None,
+                "temp_c": None,
+            })
+
+    usb_base = "/sys/bus/usb/devices"
+    if os.path.isdir(usb_base):
+        for dev in sorted(os.listdir(usb_base)):
+            dev_path = os.path.join(usb_base, dev)
+            try:
+                vendor = open(os.path.join(dev_path, "idVendor")).read().strip().lower()
+                product = open(os.path.join(dev_path, "idProduct")).read().strip().lower()
+            except OSError:
+                continue
+            if vendor == "18d1" and product in {"9302", "930a"}:
+                devices.append({
+                    "name": "Google Coral USB Edge TPU",
+                    "type": "usb",
+                    "path": dev,
+                    "available": True,
+                    "util_pct": None,
+                    "temp_c": None,
+                })
+    return devices
+
+
 # ── plugin stats ──────────────────────────────────────────────────────────────
 
 def _plugin_stats() -> list[dict[str, Any]]:
@@ -223,12 +259,12 @@ async def get_metrics(_=Depends(get_current_user)) -> dict[str, Any]:
     # Disk
     disks: list[dict[str, Any]] = []
     disk_targets = [("/", "Sistema")]
+    io = psutil.disk_io_counters(perdisk=False)
     if os.path.ismount("/mnt/cctv"):
         disk_targets.append(("/mnt/cctv", "CCTV"))
     for mount, label in disk_targets:
         try:
             d = psutil.disk_usage(mount)
-            io = psutil.disk_io_counters(perdisk=False)
             disks.append({
                 "mount": mount,
                 "label": label,
@@ -247,6 +283,7 @@ async def get_metrics(_=Depends(get_current_user)) -> dict[str, Any]:
     # GPU
     gpus = _gpu_stats()
     igpu = _igpu_info()
+    tpus = _tpu_stats()
 
     # Network
     net = _net_rates()
@@ -286,6 +323,12 @@ async def get_metrics(_=Depends(get_current_user)) -> dict[str, Any]:
             "swap_percent": swap.percent,
         },
         "disks": disks,
+        "disk_io": {
+            "read_total_gb": round((io.read_bytes if io else 0) / 1e9, 2),
+            "write_total_gb": round((io.write_bytes if io else 0) / 1e9, 2),
+            "read_count": io.read_count if io else 0,
+            "write_count": io.write_count if io else 0,
+        },
         "temperature": {
             "cpu_package_c": cpu_temp["package_c"],
             "cpu_cores": cpu_temp["cores"],
@@ -293,6 +336,7 @@ async def get_metrics(_=Depends(get_current_user)) -> dict[str, Any]:
         },
         "gpu": gpus,
         "igpu": igpu,
+        "tpu": tpus,
         "network": net,
         "process": {
             "rss_mb": round(proc_mem.rss / 1e6, 1),

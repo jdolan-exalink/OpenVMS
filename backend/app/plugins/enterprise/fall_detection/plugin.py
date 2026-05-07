@@ -143,7 +143,22 @@ class FallDetectionPlugin(BasePlugin):
             fall_type = self._classify_fall_type(track.keypoints_history[-1])
             camera_id = await self._resolve_camera_id(camera_name)
 
-            _, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            from app.plugins.shared.annotation import annotate_frame, encode_jpeg
+            kp_vals = [v for kp in keypoints.values() for v in (kp.get("x", 0), kp.get("y", 0))]
+            if kp_vals:
+                xs = kp_vals[0::2]
+                ys = kp_vals[1::2]
+                pad = 20
+                person_box = {
+                    "x1": max(0, int(min(xs)) - pad),
+                    "y1": max(0, int(min(ys)) - pad),
+                    "x2": min(image.shape[1], int(max(xs)) + pad),
+                    "y2": min(image.shape[0], int(max(ys)) + pad),
+                }
+                annotated = annotate_frame(image, [person_box], color=(0, 0, 220), label="fall")
+            else:
+                annotated = image
+            snapshot = encode_jpeg(annotated, quality=70)
 
             await self.emit_alert(
                 camera_id=camera_id or "",
@@ -157,7 +172,7 @@ class FallDetectionPlugin(BasePlugin):
                     "keypoints": keypoints,
                     "timestamp": timestamp,
                 },
-                snapshot_bytes=jpeg.tobytes(),
+                snapshot_bytes=snapshot,
             )
 
         self._cleanup_old_tracks(camera_name, timestamp)

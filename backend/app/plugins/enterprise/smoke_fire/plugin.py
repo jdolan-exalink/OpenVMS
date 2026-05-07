@@ -106,7 +106,11 @@ class SmokeFirePlugin(BasePlugin):
         fire_boxes = [d["bbox"] for d in detections if d["class_name"] in ["fire", "flame"]]
         smoke_boxes = [d["bbox"] for d in detections if d["class_name"] == "smoke"]
 
-        _, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        from app.plugins.shared.annotation import annotate_frame, encode_jpeg
+        annotated = image.copy()
+        annotated = annotate_frame(annotated, fire_boxes, color=(0, 60, 255), label="fire")
+        annotated = annotate_frame(annotated, smoke_boxes, color=(160, 160, 160), label="smoke")
+        snapshot = encode_jpeg(annotated, quality=70)
 
         await self.emit_alert(
             camera_id=camera_name,
@@ -122,7 +126,7 @@ class SmokeFirePlugin(BasePlugin):
                 "fire_boxes": fire_boxes,
                 "smoke_boxes": smoke_boxes,
             },
-            snapshot_bytes=jpeg.tobytes(),
+            snapshot_bytes=snapshot,
         )
 
     async def on_unload(self) -> None:

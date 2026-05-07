@@ -74,6 +74,7 @@ class BasePlugin(ABC):
         severity: str,
         data: dict,
         snapshot_bytes: Optional[bytes] = None,
+        clip_path: Optional[str] = None,
     ) -> None:
         """Emit an alert distributed via WebSocket and configured channels."""
         if self._emit_alert is not None:
@@ -84,6 +85,7 @@ class BasePlugin(ABC):
                 severity=severity,
                 data=data,
                 snapshot_bytes=snapshot_bytes,
+                clip_path=clip_path,
             )
 
         cfg: dict = getattr(self, "_config", {})

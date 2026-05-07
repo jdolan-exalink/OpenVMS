@@ -94,7 +94,7 @@ export default function LprPage() {
         <span className="text-2xl">🚗</span>
         <div>
           <h1 className="m-0 text-lg font-bold text-[var(--text-0)]">LPR — Reconocimiento de Matrículas</h1>
-          <p className="text-xs text-[var(--text-3)]">Historial de detecciones y gestión de lista negra</p>
+          <p className="text-xs text-[var(--text-3)]">Historial, búsqueda fuzzy, fusión temporal y gestión de listas</p>
         </div>
       </div>
 
@@ -142,6 +142,8 @@ export default function LprPage() {
                 <tr className="border-b border-[var(--line)] text-[var(--text-3)]">
                   <th className="px-4 py-2 text-left font-medium">Matrícula</th>
                   <th className="px-4 py-2 text-left font-medium">Confianza</th>
+                  <th className="px-4 py-2 text-left font-medium">Región</th>
+                  <th className="px-4 py-2 text-left font-medium">Frames</th>
                   <th className="px-4 py-2 text-left font-medium">Cámara</th>
                   <th className="px-4 py-2 text-left font-medium">Fecha/Hora</th>
                   <th className="px-4 py-2 text-left font-medium">Estado</th>
@@ -162,7 +164,7 @@ export default function LprPage() {
                 ))}
                 {displayPlates.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-[var(--text-3)]">
+                    <td colSpan={8} className="px-4 py-6 text-center text-[var(--text-3)]">
                       {platesQ.isLoading ? "Cargando…" : "Sin detecciones"}
                     </td>
                   </tr>
@@ -261,7 +263,18 @@ function PlateRow({
         <span className="mono font-semibold text-[var(--text-0)]">{plate.plate_number}</span>
       </td>
       <td className="px-4 py-2 text-[var(--text-2)]">
-        {plate.plate_score != null ? `${(plate.plate_score * 100).toFixed(0)}%` : "—"}
+        {(plate.final_confidence ?? plate.plate_score) != null ? `${((plate.final_confidence ?? plate.plate_score ?? 0) * 100).toFixed(0)}%` : "—"}
+        {plate.raw_plate && plate.raw_plate !== plate.plate_number && (
+          <div className="mono text-[9px] text-[var(--text-3)]">OCR {plate.raw_plate}</div>
+        )}
+      </td>
+      <td className="px-4 py-2 text-[var(--text-2)]">
+        <span className={plate.syntax_valid ? "text-[var(--acc)]" : "text-[var(--warn)]"}>
+          {plate.country ?? "—"}
+        </span>
+      </td>
+      <td className="px-4 py-2 text-[var(--text-2)]">
+        <span className="mono text-[10px]">{plate.frames_used ?? 1}</span>
       </td>
       <td className="px-4 py-2 text-[var(--text-2)]">
         <span className="mono text-[10px]">{plate.camera_id?.slice(0, 8) ?? "—"}</span>

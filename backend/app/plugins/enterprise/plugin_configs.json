@@ -21,6 +21,10 @@
     "example": {
       "detection_cooldown": 10,
       "alert_cooldown": 60,
+      "country": "AR",
+      "enable_ocr_correction": true,
+      "min_frames": 1,
+      "min_score": 0.0,
       "enabled_cameras": []
     }
   },
@@ -32,29 +36,47 @@
     "requires_gpu": true,
     "description": "Detecta matrículas directamente desde frames con YOLO + PaddleOCR; independiente de Frigate, con lista negra integrada",
     "example": {
-      "plate_model_path": "/models/model_cache/yolov9_license_plate/yolov9-256-license-plates.onnx",
+      "plate_model_path": "/models/license_plate_detector.onnx",
       "confidence": 0.5,
       "use_gpu": false,
       "ocr_lang": "en",
       "detection_cooldown": 10,
+      "frame_interval": 0.5,
+      "dedupe_window": 10,
+      "country": "AR",
+      "enable_ocr_correction": true,
+      "min_frames": 2,
       "enabled_cameras": []
     }
   },
 
   "face_recognition": {
     "display_name": "Reconocimiento Facial",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "recognition",
     "requires_gpu": true,
-    "description": "Identifica rostros registrados en galería usando InsightFace + búsqueda vectorial con pgvector",
+    "description": "Detección, calidad, reconocimiento, watchlists, anti-flood y búsqueda forense facial con InsightFace",
     "example": {
       "model_name": "buffalo_l",
       "detection_cooldown": 5.0,
-      "similarity_threshold": 0.5,
+      "similarity_threshold": 0.6,
+      "strict_similarity_threshold": 0.75,
       "min_face_confidence": 0.5,
+      "min_quality_score": 0.45,
+      "registration_min_quality_score": 0.35,
+      "same_person_alert_cooldown": 60,
+      "unknown_alert_cooldown": 30,
+      "emit_unknown_events": true,
       "use_gpu": true,
       "alert_severity": "medium",
       "store_unknown_faces": true,
+      "watchlists": {
+        "vip": [],
+        "blacklist": [],
+        "employees": [],
+        "contractors": [],
+        "missing_persons": []
+      },
       "enabled_cameras": []
     }
   },
@@ -178,18 +200,40 @@
 
   "abandoned_object": {
     "display_name": "Objeto Abandonado",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "analytics",
     "requires_gpu": true,
-    "description": "Detecta objetos detenidos sin dueño mediante tracking YOLO — emite alerta tras N segundos sin movimiento",
+    "description": "Detecta objetos abandonados, objetos removidos y permanencia sospechosa con tracking, asociación dueño-objeto, zonas y severidad contextual",
     "example": {
       "model_path": "/models/abandoned_object_yolo.pt",
       "confidence": 0.5,
       "use_gpu": true,
-      "min_abandoned_seconds": 30,
-      "movement_threshold": 50,
-      "excluded_labels": ["person", "car", "truck", "bus", "motorcycle", "bicycle"],
-      "enabled_cameras": []
+      "suspicious_seconds": 10,
+      "pending_seconds": 30,
+      "min_abandoned_seconds": 60,
+      "movement_threshold": 35,
+      "owner_distance_px": 140,
+      "required_persistence_frames": 8,
+      "min_area_ratio": 0.001,
+      "max_bbox_jitter_ratio": 0.35,
+      "removed_seconds": 15,
+      "stale_seconds": 8,
+      "object_labels": ["backpack", "suitcase", "handbag", "box", "package", "bag", "bottle", "bicycle", "motorcycle", "car", "truck"],
+      "person_labels": ["person"],
+      "excluded_labels": [],
+      "enabled_cameras": [],
+      "zones": {
+        "Hall_01": [
+          {
+            "name": "entrada_principal",
+            "type": "high_risk",
+            "polygon": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
+            "suspicious_seconds": 10,
+            "pending_seconds": 20,
+            "min_abandoned_seconds": 30
+          }
+        ]
+      }
     }
   },
 
@@ -203,9 +247,12 @@
       "model_path": "/models/epp_yolo.pt",
       "confidence": 0.5,
       "use_gpu": true,
-      "min_violation_seconds": 2,
+      "min_violation_seconds": 3,
+      "window_size": 10,
+      "required_positive_frames": 8,
       "alert_cooldown": 60,
       "enabled_cameras": [],
+      "required_epp": ["helmet", "vest"],
       "zones": {
         "camara_oficina": [
           {
@@ -213,6 +260,12 @@
             "polygon": [[100, 100], [540, 100], [540, 380], [100, 380]],
             "require_helmet": true,
             "require_vest": true,
+            "require_gloves": false,
+            "require_boots": false,
+            "require_goggles": false,
+            "require_mask": false,
+            "require_harness": false,
+            "severity": "high",
             "labels": ["person", "worker"]
           }
         ]
@@ -226,6 +279,10 @@
     "category": "analytics",
     "description": "Detecta manipulación física de la cámara: tapado, desenfoque abrupto, cambio de escena o pérdida de señal",
     "example": {
+      "detect_loss_of_signal": true,
+      "detect_solid_color": false,
+      "detect_blur": false,
+      "detect_scene_change": true,
       "blur_threshold": 50,
       "ssim_threshold": 0.4,
       "consecutive_frames_required": 3,

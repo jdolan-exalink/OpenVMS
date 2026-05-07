@@ -1,12 +1,17 @@
+import logging
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
+log = logging.getLogger(__name__)
+
 
 class InferenceBackend(Enum):
-    TENSORRT = "tensorrt"
-    OPENVINO = "openvino"
-    ONNX_CPU = "onnx_cpu"
+    TENSORRT = "tensorrt"      # PyTorch CUDA (YOLO .to("cuda"))
+    OPENVINO = "openvino"      # Intel OpenVINO (YOLO exported to .xml)
+    EDGE_TPU = "edge_tpu"      # Google Coral Edge TPU (.tflite _edgetpu model)
+    ONNX_CPU = "onnx_cpu"      # ONNX Runtime CPU
     PYTORCH_CPU = "pytorch_cpu"
 
 
@@ -15,6 +20,7 @@ class InferenceEngine:
     backend: InferenceBackend
     _model: Optional[object] = None
     _session: Optional[object] = None
+    _interpreter: Optional[object] = None
 
     def __init__(
         self,
@@ -33,12 +39,24 @@ class InferenceEngine:
         except ImportError:
             pass
         try:
-            import openvino
+            import openvino  # noqa: F401
             return InferenceBackend.OPENVINO
         except ImportError:
             pass
+        # Coral Edge TPU — PCIe (/dev/apex_*) or USB (via pycoral)
         try:
-            import onnxruntime
+            from pycoral.utils.edgetpu import list_edge_tpus
+            if list_edge_tpus():
+                return InferenceBackend.EDGE_TPU
+        except ImportError:
+            # pycoral not installed — check device presence as a signal
+            if any(os.path.exists(f"/dev/apex_{i}") for i in range(4)):
+                log.warning(
+                    "Coral Edge TPU device found but pycoral is not installed; "
+                    "falling back to ONNX/CPU. Install pycoral to enable TPU inference."
+                )
+        try:
+            import onnxruntime  # noqa: F401
             return InferenceBackend.ONNX_CPU
         except ImportError:
             pass
@@ -59,6 +77,23 @@ class InferenceEngine:
                 base = YOLO(str(self.model_path))
                 base.export(format="openvino")
             self._model = YOLO(str(xml_path))
+
+        elif self.backend == InferenceBackend.EDGE_TPU:
+            edgetpu_path = self.model_path.parent / (self.model_path.stem + "_edgetpu.tflite")
+            if not edgetpu_path.exists():
+                log.warning(
+                    "Edge TPU model not found at %s — "
+                    "compile the model with the Edge TPU compiler and place it there. "
+                    "Falling back to CPU inference.",
+                    edgetpu_path,
+                )
+                self.backend = InferenceBackend.PYTORCH_CPU
+                await self.load()
+                return
+            from pycoral.utils.edgetpu import make_interpreter
+            self._interpreter = make_interpreter(str(edgetpu_path))
+            self._interpreter.allocate_tensors()
+            log.info("Coral Edge TPU loaded: %s", edgetpu_path)
 
         elif self.backend == InferenceBackend.ONNX_CPU:
             import onnxruntime as ort
@@ -86,6 +121,8 @@ class InferenceEngine:
         conf: float = 0.5,
         iou: float = 0.45,
     ) -> list[dict]:
+        if self.backend == InferenceBackend.EDGE_TPU:
+            return await self._predict_edgetpu(image, conf)
         if self.backend == InferenceBackend.ONNX_CPU:
             return await self._predict_onnx(image, conf, iou)
         return await self._predict_yolo(image, conf, iou)
@@ -119,6 +156,40 @@ class InferenceEngine:
                         },
                     }
                 )
+        return detections
+
+    async def _predict_edgetpu(self, image, conf: float) -> list[dict]:
+        import cv2
+        import numpy as np
+        from pycoral.adapters import common, detect
+
+        if isinstance(image, bytes):
+            image = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR)
+
+        orig_h, orig_w = image.shape[:2]
+        input_w, input_h = common.input_size(self._interpreter)
+        resized = cv2.resize(image, (input_w, input_h))
+        common.set_input(self._interpreter, resized)
+        self._interpreter.invoke()
+
+        objs = detect.get_objects(self._interpreter, conf)
+        sx, sy = orig_w / input_w, orig_h / input_h
+        detections = []
+        for obj in objs:
+            b = obj.bbox
+            detections.append(
+                {
+                    "class_id": obj.id,
+                    "class_name": str(obj.id),
+                    "confidence": float(obj.score),
+                    "bbox": {
+                        "x1": max(0, int(b.xmin * sx)),
+                        "y1": max(0, int(b.ymin * sy)),
+                        "x2": min(orig_w, int(b.xmax * sx)),
+                        "y2": min(orig_h, int(b.ymax * sy)),
+                    },
+                }
+            )
         return detections
 
     async def _predict_onnx(
@@ -201,3 +272,4 @@ class InferenceEngine:
     async def unload(self) -> None:
         self._model = None
         self._session = None
+        self._interpreter = None

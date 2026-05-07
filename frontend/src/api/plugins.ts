@@ -89,12 +89,18 @@ export async function testTelegram(bot_token: string, chat_id: string) {
 
 export type LprPlate = {
   id: number;
+  event_id: number | null;
   plate_number: string;
   plate_score: number | null;
   camera_id: string | null;
   server_id: string | null;
   is_blacklisted: boolean;
   detected_at: string;
+  country: string | null;
+  syntax_valid: boolean;
+  frames_used: number;
+  raw_plate: string | null;
+  final_confidence: number | null;
 };
 
 export type LprBlacklist = {
@@ -110,7 +116,7 @@ export async function listPlates(params?: { camera_id?: string; limit?: number }
 }
 
 export async function searchPlates(plate: string, limit = 50) {
-  const { data } = await apiClient.get<LprPlate[]>("/plugins/lpr/search", { params: { plate, limit } });
+  const { data } = await apiClient.get<LprPlate[]>("/plugins/lpr/search", { params: { plate, fuzzy: true, limit } });
   return data;
 }
 
@@ -202,6 +208,23 @@ export type FaceAppearance = {
   source: "registro" | "reconocimiento";
   similarity: number | null;
 };
+
+export type FaceRecognitionStats = {
+  model_loaded: boolean;
+  pgvector_available: boolean;
+  registered_faces: number;
+  unknown_faces: number;
+  faces_24h: number;
+  active_tracks: number;
+  watchlists: Record<string, number>;
+  quality_threshold?: number;
+  similarity_threshold?: number;
+};
+
+export async function getFaceRecognitionStats() {
+  const { data } = await apiClient.get<FaceRecognitionStats>("/plugins/face_recognition/stats");
+  return data;
+}
 
 export async function listFaces(person_name?: string, limit = 50) {
   const { data } = await apiClient.get<RegisteredFace[]>("/plugins/face_recognition/faces", {
@@ -367,6 +390,12 @@ export async function getCameraSabotageStats() {
   const { data } = await apiClient.get<{
     monitored_cameras: number;
     consecutive_alerts: number;
+    active_sabotage_cameras: number;
+    active_sabotage: Array<{
+      camera_name: string;
+      sabotage_type?: string;
+      started_at?: number;
+    }>;
   }>("/plugins/camera_sabotage/stats");
   return data;
 }
@@ -381,7 +410,21 @@ export async function getEppStats() {
   const { data } = await apiClient.get<{
     engine_loaded: boolean;
     active_tracks: number;
+    active_violations: number;
     violations_logged: number;
+    configured_model_path?: string;
+    zones_configured?: number;
+    enabled_cameras?: string[];
+    required_epp?: string[];
+    window_size?: number;
+    required_positive_frames?: number;
+    status?: {
+      state: string;
+      message: string;
+      model_path?: string;
+      backend?: string | null;
+      missing?: Array<{ type: string; path?: string; hint?: string }>;
+    };
   }>("/plugins/epp/stats");
   return data;
 }
@@ -433,6 +476,22 @@ export async function getLprAdvancedStats() {
     engine_loaded: boolean;
     ocr_ready: boolean;
     last_detection_times: number;
+    active_tracks: number;
+    configured_model_path?: string;
+    enabled_cameras?: string[];
+    status?: {
+      state: string;
+      message: string;
+      model_path?: string;
+      backend?: string | null;
+      missing?: Array<{ type: string; path?: string; hint?: string }>;
+    };
+    ocr_status?: {
+      state: string;
+      message: string;
+      lang?: string;
+      hint?: string;
+    };
   }>("/plugins/lpr_advanced/stats");
   return data;
 }

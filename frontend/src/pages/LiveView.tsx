@@ -609,7 +609,16 @@ function CameraOverlay({
   onVolumeChange: (cameraId: string, volume: number) => void;
 }) {
   const lastDetection = useEventStore((s) => s.lastDetection);
-  const detection = lastDetection[camera.id] ?? lastDetection[camera.name ?? ""] ?? null;
+  const events = useEventStore((s) => s.events);
+  const detection = lastDetection[camera.id] ?? lastDetection[camera.frigate_name ?? ""] ?? lastDetection[camera.name ?? ""] ?? null;
+  const abandoned = useMemo(
+    () => events.find((ev) => (
+      ev.plugin === "abandoned_object"
+      && (ev.camera_id === camera.id || ev.camera_id === camera.frigate_name || ev.camera_name === camera.frigate_name || ev.camera_name === camera.name)
+      && Date.now() - new Date(ev.timestamp).getTime() < 120_000
+    )),
+    [events, camera.id, camera.frigate_name, camera.name],
+  );
 
   return (
     <>
@@ -664,8 +673,68 @@ function CameraOverlay({
           />
         </div>
       ) : null}
+      {abandoned ? <AbandonedObjectOverlay event={abandoned} /> : null}
     </>
   );
+}
+
+function AbandonedObjectOverlay({ event }: { event: ReturnType<typeof useEventStore.getState>["events"][number] }) {
+  const data = event.data ?? {};
+  const bbox = (data.bbox ?? (data.overlay as Record<string, unknown> | undefined)?.object_bbox) as Record<string, unknown> | undefined;
+  const state = String(data.state ?? event.label).replaceAll("_", " ");
+  const obj = String(data.object_type ?? "objeto");
+  const zone = String(data.zone ?? "default");
+  const countdown = Number(data.countdown_seconds ?? 0);
+  const unattended = Number(data.unattended_seconds ?? 0);
+  const color = abandonedColor(String(data.state ?? event.label), String(event.severity ?? data.severity ?? "low"));
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30">
+      {bbox ? <BboxBox bbox={bbox} color={color} /> : null}
+      <div
+        className="absolute bottom-2 right-2 max-w-[78%] rounded-md border bg-black/75 px-2.5 py-2 shadow-lg backdrop-blur"
+        style={{ borderColor: color }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+          <span className="truncate text-[11px] font-semibold uppercase text-white">{state}</span>
+          {countdown > 0 ? <span className="mono text-[10px] text-white/80">{countdown}s</span> : null}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-white/75">
+          <span>{obj}</span>
+          <span>{zone}</span>
+          {unattended > 0 ? <span className="mono">{unattended}s sin dueño</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BboxBox({ bbox, color }: { bbox: Record<string, unknown>; color: string }) {
+  const x1 = Number(bbox.x1 ?? 0);
+  const y1 = Number(bbox.y1 ?? 0);
+  const x2 = Number(bbox.x2 ?? 0);
+  const y2 = Number(bbox.y2 ?? 0);
+  const widthGuess = Math.max(x2, 640);
+  const heightGuess = Math.max(y2, 480);
+  const style: CSSProperties = {
+    left: `${clamp((x1 / widthGuess) * 100, 0, 100)}%`,
+    top: `${clamp((y1 / heightGuess) * 100, 0, 100)}%`,
+    width: `${clamp(((x2 - x1) / widthGuess) * 100, 1, 100)}%`,
+    height: `${clamp(((y2 - y1) / heightGuess) * 100, 1, 100)}%`,
+    borderColor: color,
+    boxShadow: `0 0 0 1px ${color}55, 0 0 18px ${color}66`,
+  };
+  return <div className="absolute rounded-sm border-2" style={style} />;
+}
+
+function abandonedColor(state: string, severity: string) {
+  const s = state.toLowerCase();
+  if (s.includes("confirmed") || severity === "critical" || severity === "high") return "#ef4444";
+  if (s.includes("pending")) return "#f97316";
+  if (s.includes("static") || s.includes("suspicious")) return "#eab308";
+  if (s.includes("cleared") || s.includes("owner")) return "#22c55e";
+  return "#5b9dff";
 }
 
 // ─── LiveStream ─────────────────────────────────────────────────────────────────
@@ -720,7 +789,7 @@ function LiveStream({
     if (!iframe) return;
     const check = () => {
       try {
-        const video = iframe.contentDocument?.querySelector("video");
+        const { video } = getGo2rtcPlayerState(iframe);
         if (!video || video.readyState < 2 || video.videoWidth === 0) {
           setConnectionState("connecting");
         }
@@ -742,29 +811,41 @@ function LiveStream({
     let mountTime = Date.now();
 
     const monitor = () => {
-      if (Date.now() - mountTime < 4000) return;
+      if (Date.now() - mountTime < 2000) return;
       checks += 1;
       try {
         const iframe = iframeRef.current;
         if (iframe) {
-          const video = iframe.contentDocument?.querySelector("video");
+          const { video, mode, error } = getGo2rtcPlayerState(iframe);
           patchGo2rtcPlayerChrome(iframe);
-          if (video && video.readyState >= 2) {
-            const hasDims = video.videoWidth > 0 || video.videoHeight > 0;
-            const moving = video.currentTime > 0 && video.currentTime !== lastTime;
-            if (moving || hasDims) { lastTime = video.currentTime; stableTicks = 0; setConnectionState("online"); return; }
-            stableTicks += 1;
+          if (!error && mode && ["MSE", "RTC", "HLS", "MP4", "MJPEG"].includes(mode)) {
+            setConnectionState("online");
+            return;
+          }
+          if (video) {
+            // Force play if paused (autoplay may have been delayed)
+            if (video.paused && video.readyState >= 1) {
+              video.play().catch(() => { video.muted = true; video.play().catch(() => {}); });
+            }
+            if (video.readyState >= 2) {
+              const hasDims = video.videoWidth > 0 || video.videoHeight > 0;
+              // lastTime starts at -1 so currentTime !== lastTime is always true
+              // on the first check (even when currentTime = 0 for a live stream).
+              const moving = video.currentTime !== lastTime;
+              if (moving || hasDims) { lastTime = video.currentTime; stableTicks = 0; setConnectionState("online"); return; }
+              stableTicks += 1;
+            }
           }
         }
       } catch { /* same-origin defensive */ }
-      if (checks >= 64 || stableTicks >= 16) setConnectionState("offline");
+      if (checks >= 160 || stableTicks >= 16) setConnectionState("offline");
     };
 
     let intervalId: ReturnType<typeof setInterval> | undefined;
     const timeoutId = window.setTimeout(() => {
       monitor();
       intervalId = window.setInterval(monitor, 250);
-    }, 4000);
+    }, 2000);
     return () => { window.clearTimeout(timeoutId); if (intervalId) window.clearInterval(intervalId); };
   }, [audioEnabled, attempt, connectionState, streamUrl, volume]);
 
@@ -774,7 +855,7 @@ function LiveStream({
     if (!iframe) return;
     const apply = () => {
       try {
-        const video = iframe.contentDocument?.querySelector("video");
+        const { video } = getGo2rtcPlayerState(iframe);
         patchGo2rtcPlayerChrome(iframe);
         if (video) { video.muted = !audioEnabled; video.volume = audioEnabled ? volume : 0; }
       } catch { /* same-origin defensive */ }
@@ -904,6 +985,21 @@ function patchGo2rtcPlayerChrome(iframe: HTMLIFrameElement) {
       if (el instanceof HTMLElement) el.style.display = "none";
     });
   } catch { /* same-origin defensive */ }
+}
+
+function getGo2rtcPlayerState(iframe: HTMLIFrameElement): {
+  video: HTMLVideoElement | null;
+  mode: string;
+  error: string;
+} {
+  const doc = iframe.contentDocument;
+  if (!doc) return { video: null, mode: "", error: "" };
+
+  const video = doc.querySelector("video");
+  const mode = doc.querySelector(".mode")?.textContent?.trim().toUpperCase() ?? "";
+  const error = doc.querySelector(".status")?.textContent?.trim() ?? "";
+
+  return { video, mode, error };
 }
 
 type ZoomView = { scale: number; x: number; y: number };

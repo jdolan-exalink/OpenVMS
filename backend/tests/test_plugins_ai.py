@@ -100,3 +100,26 @@ async def test_face_recognition_get_config_schema():
     schema = plugin.get_config_schema()
     assert schema["type"] == "object"
     assert "properties" in schema
+    assert "min_quality_score" in schema["properties"]
+    assert "watchlists" in schema["properties"]
+
+
+def test_face_recognition_watchlist_event_and_severity():
+    plugin = FaceRecognitionPlugin()
+    plugin._config = {"strict_similarity_threshold": 0.75}
+    plugin._watchlists = plugin._normalize_watchlists({"vip": ["Alice"], "blacklist": ["Bob"]})
+
+    assert plugin._event_type_for_person("Alice").value == "vip_detected"
+    assert plugin._severity_for_person("Alice", 0.7, 0.6) == "high"
+    assert plugin._event_type_for_person("Bob").value == "blacklist_alert"
+    assert plugin._severity_for_person("Bob", 0.7, 0.6) == "critical"
+    assert plugin._event_type_for_person("Carol").value == "face_recognized"
+
+
+def test_face_recognition_alert_cooldown():
+    plugin = FaceRecognitionPlugin()
+    plugin._config = {"same_person_alert_cooldown": 60}
+
+    assert plugin._alert_allowed("cam:alice", 1000.0)
+    assert not plugin._alert_allowed("cam:alice", 1010.0)
+    assert plugin._alert_allowed("cam:alice", 1061.0)

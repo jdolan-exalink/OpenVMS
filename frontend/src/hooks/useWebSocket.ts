@@ -9,6 +9,27 @@ function wsBase(): string {
   return `${proto}://${window.location.host}`;
 }
 
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return null;
+
+  try {
+    const response = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json() as { access_token?: string; refresh_token?: string };
+    if (!data.access_token || !data.refresh_token) return null;
+    localStorage.setItem("access_token", data.access_token);
+    localStorage.setItem("refresh_token", data.refresh_token);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
 export function useWebSocket() {
   const queryClient = useQueryClient();
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -35,10 +56,11 @@ export function useWebSocket() {
     };
   }, [isAuthenticated, accessToken, queryClient, pushEvent]);
 
-  function connect(token: string) {
+  async function connect(token: string) {
     if (!alive.current) return;
 
-    const ws = new WebSocket(`${wsBase()}/ws/events?token=${token}`);
+    const latestToken = localStorage.getItem("access_token") ?? token;
+    const ws = new WebSocket(`${wsBase()}/ws/events?token=${encodeURIComponent(latestToken)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -55,7 +77,7 @@ export function useWebSocket() {
             queryClient.invalidateQueries(["pc-counts"]);
             queryClient.invalidateQueries(["pc-history"]);
           }
-          if (msg.alert_type === "fall_detected") {
+          if (msg.alert_type === "fall_detected" || msg.plugin === "abandoned_object" || msg.plugin === "face_recognition") {
             pushEvent(normalizePluginAlert(msg));
             queryClient.invalidateQueries(["events-page"]);
           }
@@ -68,11 +90,18 @@ export function useWebSocket() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (!alive.current) return;
-      retryRef.current = setTimeout(() => {
+      retryRef.current = setTimeout(async () => {
         delayRef.current = Math.min(delayRef.current * 2, 60000);
-        connect(token);
+        const nextToken = event.code === 1008
+          ? await refreshAccessToken()
+          : localStorage.getItem("access_token") ?? await refreshAccessToken();
+        if (!nextToken) {
+          useAuthStore.getState().clearSession();
+          return;
+        }
+        connect(nextToken);
       }, delayRef.current);
     };
 
@@ -98,6 +127,9 @@ function normalizePluginAlert(msg: Record<string, unknown>): WsEvent {
     zones: [],
     snapshot_url: null,
     timestamp: String(msg.timestamp ?? new Date().toISOString()),
+    plugin: String(msg.plugin ?? data.plugin ?? "plugin"),
+    severity: String(msg.severity ?? data.severity ?? "high"),
+    data,
   };
 }
 

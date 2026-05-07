@@ -1,8 +1,8 @@
 {
   "name": "abandoned_object",
   "display_name": "Objeto Abandonado",
-  "version": "1.0.0",
-  "description": "Detecta objetos detenidos sin dueño mediante tracking YOLO — emite alerta tras N segundos sin movimiento",
+  "version": "1.1.0",
+  "description": "Detecta objetos abandonados, removidos y permanencia sospechosa con tracking, asociación dueño-objeto, zonas y severidad contextual",
   "author": "OpenCCTV",
   "category": "analytics",
   "requires_gpu": true,

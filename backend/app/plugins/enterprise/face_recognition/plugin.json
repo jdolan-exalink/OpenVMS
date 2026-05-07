@@ -1,8 +1,8 @@
 {
   "name": "face_recognition",
   "display_name": "Reconocimiento Facial",
-  "version": "1.0.0",
-  "description": "Identifica personas registradas en galería usando InsightFace + búsqueda vectorial con pgvector",
+  "version": "1.1.0",
+  "description": "Detección, calidad, reconocimiento, watchlists, anti-flood y búsqueda forense facial con InsightFace",
   "author": "OpenCCTV",
   "category": "recognition",
   "requires_gpu": true,

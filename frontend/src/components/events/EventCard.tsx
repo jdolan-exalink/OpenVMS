@@ -66,10 +66,70 @@ const LABELS: Record<string, LabelCfg> = {
     bg: "rgba(0,201,255,0.14)",
     icon: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-7-2h2v-4h4v-2h-4V7h-2v4H8v2h4z",
   },
+  lpr_advanced: {
+    color: "#38BDF8",
+    bg: "rgba(56,189,248,0.14)",
+    icon: "M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-9-3h8v-2h-8v2zm0-4h8v-2h-8v2z",
+  },
+  blacklisted_plate: {
+    color: "#EF4444",
+    bg: "rgba(239,68,68,0.14)",
+    icon: "M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z",
+  },
+  epp_violation: {
+    color: "#FB7185",
+    bg: "rgba(251,113,133,0.14)",
+    icon: "M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z",
+  },
   face: {
     color: "#EC4899",
     bg: "rgba(236,72,153,0.14)",
     icon: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z",
+  },
+  face_recognized: {
+    color: "#EC4899",
+    bg: "rgba(236,72,153,0.14)",
+    icon: "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+  },
+  unknown_face: {
+    color: "#94A3B8",
+    bg: "rgba(148,163,184,0.14)",
+    icon: "M12 2a5 5 0 015 5c0 2-1 3-2.5 4.2C13.2 12.3 13 13 13 14h-2c0-1.7.6-2.8 2-4 1.3-1 2-1.7 2-3a3 3 0 10-6 0H7a5 5 0 015-5zm-1 16h2v2h-2z",
+  },
+  vip_detected: {
+    color: "#FBBF24",
+    bg: "rgba(251,191,36,0.14)",
+    icon: "M5 16L3 5l5 4 4-6 4 6 5-4-2 11H5zm0 3h14",
+  },
+  blacklist_alert: {
+    color: "#EF4444",
+    bg: "rgba(239,68,68,0.14)",
+    icon: "M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z",
+  },
+  watchlist_match: {
+    color: "#F97316",
+    bg: "rgba(249,115,22,0.14)",
+    icon: "M12 2l3 6 7 .9-5 4.8 1.2 6.8L12 17l-6.2 3.5L7 13.7 2 8.9 9 8l3-6z",
+  },
+  abandoned_object: {
+    color: "#EF4444",
+    bg: "rgba(239,68,68,0.14)",
+    icon: "M20 6H4a2 2 0 00-2 2v8a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2zm-4 4h4v4h-4v-4z",
+  },
+  abandoned_pending: {
+    color: "#F97316",
+    bg: "rgba(249,115,22,0.14)",
+    icon: "M12 8v5l4 2m6-3a10 10 0 11-20 0 10 10 0 0120 0z",
+  },
+  suspicious_static_object: {
+    color: "#EAB308",
+    bg: "rgba(234,179,8,0.14)",
+    icon: "M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z",
+  },
+  removed_object: {
+    color: "#A855F7",
+    bg: "rgba(168,85,247,0.14)",
+    icon: "M3 6h18M8 6V4h8v2m-9 0l1 14h8l1-14",
   },
   fall_detected: {
     color: "#EF4444",
@@ -118,6 +178,7 @@ export function EventPopup({ event, onClose }: PopupProps) {
   const [clipSrc, setClipSrc] = useState<string | null>(null);
   const [clipLoading, setClipLoading] = useState(false);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotName] = useState(() => `evento_${event.id}_${event.label}.jpg`);
 
   const blobUrls = useEventStore((s) => s.blobUrls);
   const setBlobUrl = useEventStore((s) => s.setBlobUrl);
@@ -197,14 +258,27 @@ export function EventPopup({ event, onClose }: PopupProps) {
             {clipSrc && (
               <a
                 href={clipSrc}
-                download={`event_${event.id}.mp4`}
+                download={`evento_${event.id}_${event.label}.mp4`}
                 className="ep-popup-btn ep-popup-download"
                 title="Descargar video"
               >
                 <svg viewBox="0 0 24 24" fill="none" width="12" height="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
                 </svg>
-                Descargar
+                Descargar clip
+              </a>
+            )}
+            {!clipSrc && cachedSnapshot && (
+              <a
+                href={cachedSnapshot}
+                download={snapshotName}
+                className="ep-popup-btn ep-popup-download"
+                title="Descargar foto"
+              >
+                <svg viewBox="0 0 24 24" fill="none" width="12" height="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+                Descargar foto
               </a>
             )}
             <button

@@ -193,6 +193,9 @@ class LineCrossingPlugin(BasePlugin):
     async def _save_crossing_event(
         self, event: dict, line_cfg: dict, direction: str, track_id: int
     ) -> None:
+        if not event.get("has_snapshot") or not event.get("id"):
+            return
+
         camera_id = self._parse_uuid(event.get("camera_id"))
         server_id = self._parse_uuid(event.get("server_id"))
         metadata = {
@@ -219,7 +222,7 @@ class LineCrossingPlugin(BasePlugin):
                     score=event.get("score"),
                     zones=[],
                     has_clip=False,
-                    has_snapshot=False,
+                    has_snapshot=bool(event.get("has_snapshot")),
                     extra_metadata=metadata,
                 ))
                 await db.commit()
@@ -228,7 +231,7 @@ class LineCrossingPlugin(BasePlugin):
             return
 
     def _cooldown_allows(self, camera_name: str, track_id: str, line_cfg: dict, event: dict) -> bool:
-        now = float(event.get("timestamp") or event.get("start_ts") or datetime.now(timezone.utc).timestamp())
+        now = self._event_timestamp(event)
         key = f"{line_cfg.get('name', 'line')}:{track_id}:{line_cfg.get('directions', ['AB','BA'])}"
         last = self._last_alerts.setdefault(camera_name, {}).get(key, 0.0)
         cooldown = float(line_cfg.get("alert_cooldown", self._config.get("alert_cooldown", 10)))
@@ -236,6 +239,19 @@ class LineCrossingPlugin(BasePlugin):
             return False
         self._last_alerts[camera_name][key] = now
         return True
+
+    @staticmethod
+    def _event_timestamp(event: dict) -> float:
+        value = event.get("timestamp") or event.get("start_ts")
+        if value is None:
+            return datetime.now(timezone.utc).timestamp()
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return datetime.now(timezone.utc).timestamp()
 
     @staticmethod
     def _parse_uuid(value) -> uuid.UUID | None:

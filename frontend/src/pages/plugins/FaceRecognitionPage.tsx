@@ -5,6 +5,7 @@ import {
   RegisteredFace,
   UnknownFace,
   deleteFace,
+  getFaceRecognitionStats,
   getFaceImageUrl,
   identifyFace,
   listFaceAppearances,
@@ -37,6 +38,7 @@ export default function FaceRecognitionPage() {
 
   const knownQ = useQuery(["faces-known", search], () => listFaces(search || undefined, 100));
   const unknownQ = useQuery(["faces-unknown"], () => listUnknownFaces(80), { refetchInterval: 30000 });
+  const statsQ = useQuery(["faces-stats"], getFaceRecognitionStats, { refetchInterval: 15000 });
   const appearancesQ = useQuery(
     ["face-appearances", selected?.person_name],
     () => listFaceAppearances(selected!.person_name),
@@ -84,6 +86,8 @@ export default function FaceRecognitionPage() {
           className="h-9 w-full max-w-sm rounded border border-[var(--line)] bg-[var(--bg-2)] px-3 text-sm text-[var(--text-0)] outline-none focus:border-[var(--acc)]"
         />
       </div>
+
+      <FaceOpsBar stats={statsQ.data} />
 
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-h-0 flex-col gap-4">
@@ -171,6 +175,30 @@ export default function FaceRecognitionPage() {
   );
 }
 
+function FaceOpsBar({ stats }: { stats: Awaited<ReturnType<typeof getFaceRecognitionStats>> | undefined }) {
+  const watchlistTotal = stats ? Object.values(stats.watchlists ?? {}).reduce((a, b) => a + b, 0) : 0;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <FaceStat label="Modelo" value={stats?.model_loaded ? "online" : "lazy"} tone={stats?.model_loaded ? "green" : "info"} />
+      <FaceStat label="Vector DB" value={stats?.pgvector_available ? "pgvector" : "cosine"} tone={stats?.pgvector_available ? "green" : "info"} />
+      <FaceStat label="Registrados" value={stats?.registered_faces ?? "—"} />
+      <FaceStat label="Desconocidos" value={stats?.unknown_faces ?? "—"} tone="warn" />
+      <FaceStat label="Últimas 24h" value={stats?.faces_24h ?? "—"} />
+      <FaceStat label="Watchlists" value={watchlistTotal} tone={watchlistTotal ? "warn" : "info"} />
+    </div>
+  );
+}
+
+function FaceStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "warn" | "info" }) {
+  const color = tone === "green" ? "text-[var(--acc)]" : tone === "warn" ? "text-[var(--warn)]" : "text-[var(--text-0)]";
+  return (
+    <div className="rounded border border-[var(--line)] bg-[var(--bg-1)] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-[var(--text-3)]">{label}</div>
+      <div className={`mt-1 text-lg font-semibold ${color}`}>{value}</div>
+    </div>
+  );
+}
+
 function KnownFaceCard({
   face,
   active,
@@ -235,6 +263,7 @@ function KnownFaceCard({
           </div>
         )}
         <div className="text-[11px] text-[var(--text-3)]">Detectado {detectionTime(face.created_at)}</div>
+        <FaceQuality metadata={face.metadata} />
       </div>
     </button>
   );
@@ -259,12 +288,31 @@ function UnknownFaceCard({
       <div className="space-y-2 p-2">
         <div className="text-xs font-medium text-[var(--text-1)]">Desconocido</div>
         <div className="text-[10px] text-[var(--text-3)]">{detectionTime(face.created_at)}</div>
+        <FaceQuality metadata={face.metadata} compact />
         <button type="button" onClick={onName} className="vms-btn primary w-full !h-7 !min-h-0 !text-[10px]">
           Registrar nombre
         </button>
         <button type="button" onClick={onDelete} className="w-full text-[10px] text-[var(--text-3)] hover:text-[var(--warn)]">
           Descartar
         </button>
+      </div>
+    </div>
+  );
+}
+
+function FaceQuality({ metadata, compact = false }: { metadata?: Record<string, unknown>; compact?: boolean }) {
+  const quality = (metadata?.quality ?? {}) as Record<string, unknown>;
+  const score = Number(quality.quality_score ?? 0);
+  if (!score) return null;
+  const tone = score >= 0.7 ? "var(--acc)" : score >= 0.45 ? "#eab308" : "var(--warn)";
+  return (
+    <div className={compact ? "space-y-1" : "space-y-1.5"}>
+      <div className="flex items-center justify-between gap-2 text-[10px] text-[var(--text-3)]">
+        <span>Calidad</span>
+        <span className="mono" style={{ color: tone }}>{Math.round(score * 100)}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-[var(--bg-3)]">
+        <div className="h-1.5 rounded-full" style={{ width: `${Math.min(100, Math.round(score * 100))}%`, background: tone }} />
       </div>
     </div>
   );

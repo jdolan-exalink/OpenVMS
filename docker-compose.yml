@@ -1,3 +1,9 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 
   # ── Database ─────────────────────────────────────────────────────────────────
@@ -18,6 +24,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   # ── Cache / pub-sub ──────────────────────────────────────────────────────────
   redis:
@@ -30,6 +37,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   # ── MQTT broker ──────────────────────────────────────────────────────────────
   mqtt:
@@ -40,6 +48,7 @@ services:
     ports:
       - "${MQTT_PORT:-1883}:1883"
     restart: unless-stopped
+    logging: *default-logging
 
   # ── Streaming (WebRTC + LL-HLS) ──────────────────────────────────────────────
   ovenmediaengine:
@@ -48,6 +57,7 @@ services:
     volumes:
       - ./ome/Server.xml:/opt/ovenmediaengine/bin/origin_conf/Server.xml
     restart: unless-stopped
+    logging: *default-logging
 
   # ── Model initializer ────────────────────────────────────────────────────────
   # Runs once before the backend to download YOLO weights and pre-warm
@@ -66,7 +76,19 @@ services:
       TRANSFORMERS_CACHE: /models/.cache/hf/transformers
     volumes:
       - models_data:/models
+    # NVIDIA GPU — requires nvidia-container-toolkit on the host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Coral PCIe TPU — comment out if /dev/apex_0 is not present on this host
+    devices:
+      - /dev/apex_0:/dev/apex_0
     restart: "no"
+    logging: *default-logging
 
   # ── Backend ──────────────────────────────────────────────────────────────────
   backend:
@@ -99,7 +121,19 @@ services:
       - ./backend/app/plugins/external:/app/plugins/external
       - models_data:/models
       - exports_data:/tmp/exports
+    # NVIDIA GPU — requires nvidia-container-toolkit on the host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Coral PCIe TPU — comment out if /dev/apex_0 is not present on this host
+    devices:
+      - /dev/apex_0:/dev/apex_0
     restart: unless-stopped
+    logging: *default-logging
 
   # ── Frontend ─────────────────────────────────────────────────────────────────
   frontend:
@@ -109,6 +143,7 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   postgres_data:

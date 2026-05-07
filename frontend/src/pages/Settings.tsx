@@ -4,9 +4,10 @@ import CamerasPanel from "../components/settings/CameraForm";
 import UsersPanel from "../components/settings/UserManagement";
 import PluginsPanel from "../components/settings/PluginsPanel";
 import ZoneWizardPanel from "../components/settings/ZoneWizardPanel";
+import PerformancePanel from "../components/settings/PerformancePanel";
 import { useAuthStore } from "../store/authStore";
 
-type Tab = "servers" | "cameras" | "users" | "plugins" | "zones";
+type Tab = "servers" | "cameras" | "users" | "plugins" | "zones" | "performance";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "servers", label: "Servidores" },
@@ -14,6 +15,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "users", label: "Usuarios" },
   { id: "plugins", label: "Plugins" },
   { id: "zones", label: "Zonas" },
+  { id: "performance", label: "Rendimiento" },
 ];
 
 export default function Settings() {
@@ -46,6 +48,7 @@ export default function Settings() {
       {tab === "users" && <UsersPanel isAdmin={isAdmin} />}
       {tab === "plugins" && <PluginsPanel isAdmin={isAdmin} />}
       {tab === "zones" && <ZoneWizardPanel isAdmin={isAdmin} />}
+      {tab === "performance" && <PerformancePanel />}
     </div>
   );
 }

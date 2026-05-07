@@ -57,8 +57,9 @@ const LABEL_COLORS: Record<string, string> = {
 };
 
 function eventTheme(ev: VmsEvent) {
-  const meta = pluginMeta(ev.source);
-  if (pluginKey(ev.source)) return meta;
+  const metaData = ev.extra_metadata as Record<string, unknown> | undefined;
+  const meta = pluginMeta(ev.source, metaData);
+  if (pluginKey(ev.source, metaData)) return meta;
   const color = LABEL_COLORS[ev.label.toLowerCase()] ?? "#8a93a3";
   return { color, label: "Frigate" };
 }
@@ -76,7 +77,7 @@ function LabelChip({ label, plate, color }: { label: string; plate?: string | nu
 
 function SourceChip({ event }: { event: VmsEvent }) {
   const theme = eventTheme(event);
-  const key = pluginKey(event.source);
+  const key = pluginKey(event.source, event.extra_metadata as Record<string, unknown> | undefined);
   return (
     <span
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold"
@@ -119,7 +120,7 @@ function toWsEvent(ev: VmsEvent): WsEvent {
     frigate_event_id: ev.frigate_event_id,
     server_id: ev.server_id ?? "",
     camera_id: ev.camera_id,
-    camera_name: null,
+    camera_name: (ev.extra_metadata?.camera_name as string | undefined) ?? null,
     label: ev.label,
     sub_label: ev.sub_label,
     score: ev.score != null ? Number(ev.score) : null,
@@ -129,6 +130,9 @@ function toWsEvent(ev: VmsEvent): WsEvent {
     zones: ev.zones,
     snapshot_url: ev.snapshot_url ?? null,
     timestamp: ev.start_time,
+    plugin: pluginKey(ev.source, ev.extra_metadata as Record<string, unknown> | undefined),
+    severity: ev.severity ?? null,
+    data: (ev.extra_metadata ?? {}) as Record<string, unknown>,
   };
 }
 
@@ -312,7 +316,8 @@ export default function Events() {
                 const serverIdx = ev.server_id ? servers.findIndex((s) => s.id === ev.server_id) : -1;
                 const server = serverIdx >= 0 ? servers[serverIdx] : undefined;
                 const theme = eventTheme(ev);
-                const isPluginEvent = Boolean(pluginKey(ev.source));
+                const evMeta = ev.extra_metadata as Record<string, unknown> | undefined;
+                const isPluginEvent = Boolean(pluginKey(ev.source, evMeta));
                 return (
                   <tr
                     key={ev.id}
@@ -330,7 +335,7 @@ export default function Events() {
                       {formatTime(ev.start_time)}
                     </td>
                     <td className="text-[var(--text-0)]">
-                      {cam?.display_name ?? <span className="text-[var(--text-3)]">—</span>}
+                      {cam?.display_name ?? (evMeta?.camera_name as string | undefined) ?? <span className="text-[var(--text-3)]">—</span>}
                     </td>
                     <td>
                       {server

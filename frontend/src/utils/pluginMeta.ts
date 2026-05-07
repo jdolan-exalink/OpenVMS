@@ -27,13 +27,14 @@ export const PLUGIN_SOURCE_OPTIONS = [
   })),
 ];
 
-export function pluginKey(source?: string | null): string | null {
+export function pluginKey(source?: string | null, metadata?: Record<string, unknown> | null): string | null {
+  if (source === "plugin" && typeof metadata?.plugin === "string") return metadata.plugin;
   if (!source?.startsWith("plugin:")) return null;
   return source.slice("plugin:".length);
 }
 
-export function pluginMeta(source?: string | null): { color: string; label: string } {
-  const key = pluginKey(source);
+export function pluginMeta(source?: string | null, metadata?: Record<string, unknown> | null): { color: string; label: string } {
+  const key = pluginKey(source, metadata);
   if (key) return PLUGIN_META[key] ?? { color: "#94a3b8", label: key };
   return { color: "#8a93a3", label: "Frigate" };
 }

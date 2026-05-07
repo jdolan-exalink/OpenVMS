@@ -47,7 +47,7 @@ export type EventListParams = {
   is_protected?: boolean;
 };
 
-export async function listEvents(params: EventListParams = {}) {
+function eventParams(params: EventListParams = {}) {
   const p: Record<string, unknown> = { limit: params.limit ?? 50 };
   if (params.camera_id) p.camera_id = params.camera_id;
   if (params.server_id) p.server_id = params.server_id;
@@ -62,7 +62,20 @@ export async function listEvents(params: EventListParams = {}) {
   if (params.source)    p.source = params.source;
   if (params.severity)  p.severity = params.severity;
   if (params.is_protected != null) p.is_protected = params.is_protected;
+  return p;
+}
+
+export async function listEvents(params: EventListParams = {}) {
+  const p = eventParams(params);
   const { data } = await apiClient.get<EventPage>("/events", { params: p });
+  return data;
+}
+
+export async function countEvents(params: EventListParams = {}) {
+  const p = eventParams(params);
+  delete p.limit;
+  delete p.cursor;
+  const { data } = await apiClient.get<{ count: number }>("/events/count", { params: p });
   return data;
 }
 

@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { listEvents, type VmsEvent } from "../api/events";
 import { listCameras } from "../api/cameras";
-import { listServers, getServerStatus } from "../api/servers";
+import { listServers, getServerStatus, type ServerStatus } from "../api/servers";
 import { listPlugins } from "../api/plugins";
 import { fetchSnapshotWithAuth, fetchClipWithAuth } from "../utils/snapshot";
 
@@ -54,10 +54,11 @@ export default function EnterpriseAnalytics() {
   const plugins    = pluginsQ.data ?? [];
 
   // ── Live server status (real ping to each Frigate) ──────────────
+  // Explicit return type so useQueries infers ServerStatus, not unknown
   const serverStatusQueries = useQueries(
     servers.map((s) => ({
       queryKey: ["analytics-srv-status", s.id],
-      queryFn: () => getServerStatus(s.id),
+      queryFn: (): Promise<ServerStatus> => getServerStatus(s.id),
       enabled: servers.length > 0,
       refetchInterval: 30000,
       retry: 1,
@@ -65,23 +66,21 @@ export default function EnterpriseAnalytics() {
     }))
   );
 
-  const srvsOnline = serverStatusQueries.filter((q) => q.data?.online).length;
+  const serverStatusLoading = serverStatusQueries.some((q) => q.isLoading);
 
-  // Cameras confirmed active by Frigate (by frigate_name/name)
-  const onlineCameraNames = useMemo(() => {
-    const set = new Set<string>();
-    serverStatusQueries.forEach((q) => {
-      if (q.data?.online) q.data.cameras.forEach((n) => set.add(n));
-    });
-    return set;
-  }, [serverStatusQueries]);
+  // Build the online camera name set directly — no useMemo to avoid
+  // stale-closure issues with useQueries' ever-changing array reference.
+  const onlineCameraNames = new Set<string>();
+  serverStatusQueries.forEach((q) => {
+    const status = q.data as ServerStatus | undefined;
+    if (status?.online) status.cameras.forEach((n) => onlineCameraNames.add(n));
+  });
 
+  const srvsOnline  = serverStatusQueries.filter((q) => (q.data as ServerStatus | undefined)?.online).length;
   const camsTotal   = cameras.length;
-  // A camera is "online" if its server is reachable and its name appears in Frigate's active list
-  const camsOnline  = useMemo(
-    () => cameras.filter((c) => c.enabled && onlineCameraNames.has(c.frigate_name ?? c.name)).length,
-    [cameras, onlineCameraNames]
-  );
+  const camsOnline  = serverStatusLoading
+    ? null   // unknown while loading — don't show stale zero
+    : cameras.filter((c) => c.enabled && onlineCameraNames.has(c.frigate_name ?? c.name)).length;
 
   const plgsActive  = plugins.filter((p) => p.enabled).length;
   const plgsTotal   = plugins.length;
@@ -236,8 +235,8 @@ export default function EnterpriseAnalytics() {
         />
         <KpiCard
           label="Cámaras"
-          value={camsOnline}
-          sub={`de ${camsTotal} total`}
+          value={camsOnline ?? "…"}
+          sub={camsOnline === null ? "verificando..." : `de ${camsTotal} total`}
           icon={
             <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
               <rect x="2" y="4" width="20" height="14" rx="2" stroke="#00d084" strokeWidth="1.5" />
@@ -425,13 +424,19 @@ export default function EnterpriseAnalytics() {
           </svg>
           <h3>Estado de Cámaras</h3>
           <span className="ml-auto flex items-center gap-2">
-            <span className="mono text-[10px] text-[var(--acc)]">{camsOnline} online</span>
-            <span className="mono text-[10px] text-[var(--text-3)]">/ {camsTotal} total</span>
-            {serverStatusQueries.some((q) => q.isLoading) && (
-              <svg className="animate-spin text-[var(--text-3)]" viewBox="0 0 24 24" fill="none" width="10" height="10">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-                <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+            {serverStatusLoading ? (
+              <>
+                <svg className="animate-spin text-[var(--text-3)]" viewBox="0 0 24 24" fill="none" width="10" height="10">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                  <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                <span className="mono text-[10px] text-[var(--text-3)]">verificando…</span>
+              </>
+            ) : (
+              <>
+                <span className="mono text-[10px] text-[var(--acc)]">{camsOnline} online</span>
+                <span className="mono text-[10px] text-[var(--text-3)]">/ {camsTotal} total</span>
+              </>
             )}
           </span>
         </div>
@@ -441,14 +446,18 @@ export default function EnterpriseAnalytics() {
           ) : (
             <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
               {cameras.map((cam) => {
-                const isOnline = cam.enabled && onlineCameraNames.has(cam.frigate_name ?? cam.name);
                 const isDisabled = !cam.enabled;
+                // While server status loads, show neutral state (don't show red "offline" prematurely)
+                const isOnline = !serverStatusLoading && cam.enabled && onlineCameraNames.has(cam.frigate_name ?? cam.name);
+                const isUnknown = serverStatusLoading && cam.enabled;
                 const evCount = events.filter((e) => e.camera_id === cam.id).length;
                 return (
                   <div
                     key={cam.id}
                     className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition hover:border-[var(--text-3)] ${
-                      isOnline
+                      isUnknown
+                        ? "border-[var(--line)] bg-[var(--bg-2)]"
+                        : isOnline
                         ? "border-[var(--line)] bg-[var(--bg-2)]"
                         : isDisabled
                         ? "border-[var(--line)] bg-[var(--bg-2)] opacity-50"
@@ -456,15 +465,15 @@ export default function EnterpriseAnalytics() {
                     }`}
                   >
                     <span
-                      className="flex-shrink-0 h-2 w-2 rounded-full"
-                      style={{ background: isOnline ? "#22c55e" : isDisabled ? "#6b7280" : "#ef4444" }}
+                      className={`flex-shrink-0 h-2 w-2 rounded-full ${isUnknown ? "animate-pulse" : ""}`}
+                      style={{ background: isUnknown ? "#6b7280" : isOnline ? "#22c55e" : isDisabled ? "#6b7280" : "#ef4444" }}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[11px] font-medium text-[var(--text-0)]">{cam.display_name}</div>
                       <div className="mono text-[9px] mt-0.5" style={{
-                        color: isOnline ? "#22c55e" : isDisabled ? "#6b7280" : "#ef4444"
+                        color: isUnknown ? "var(--text-3)" : isOnline ? "#22c55e" : isDisabled ? "#6b7280" : "#ef4444"
                       }}>
-                        {isOnline ? "online" : isDisabled ? "deshabilitada" : "offline"}
+                        {isUnknown ? "verificando…" : isOnline ? "online" : isDisabled ? "deshabilitada" : "offline"}
                         {evCount > 0 && ` · ${evCount} ev`}
                       </div>
                     </div>
@@ -526,7 +535,7 @@ function KpiCard({
   label, value, sub, trend, icon, color, suffix, sparkData, invertTrend,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   sub: string;
   trend?: number;
   icon: ReactNode;
@@ -557,7 +566,7 @@ function KpiCard({
       </div>
       <div>
         <div className="text-2xl font-bold text-[var(--text-0)]" style={{ color }}>
-          {value.toLocaleString()}{suffix}
+          {typeof value === "number" ? value.toLocaleString() : value}{suffix}
         </div>
         <div className="text-xs text-[var(--text-2)] mt-0.5">{label}</div>
         <div className="mono text-[9px] text-[var(--text-3)] mt-0.5">{sub}</div>

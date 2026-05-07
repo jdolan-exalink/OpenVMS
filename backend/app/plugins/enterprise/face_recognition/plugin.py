@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 import cv2
@@ -23,11 +24,21 @@ class FaceInfo:
     confidence: float
 
 
+class FaceEventType(str, Enum):
+    DETECTED = "face_detected"
+    RECOGNIZED = "face_recognized"
+    WATCHLIST = "watchlist_match"
+    VIP = "vip_detected"
+    BLACKLIST = "blacklist_alert"
+    UNKNOWN = "unknown_face"
+    UNKNOWN_REPEATED = "unknown_repeated"
+
+
 class FaceRecognitionPlugin(BasePlugin):
     name = "face_recognition"
     display_name = "Reconocimiento Facial"
-    version = "1.0.0"
-    description = "Identifica rostros registrados en galería usando InsightFace + búsqueda vectorial con pgvector"
+    version = "1.1.0"
+    description = "Detección, calidad, reconocimiento, watchlists y búsqueda forense facial con InsightFace"
     requires_gpu = True
     supports_openvino = False
     min_ram_gb = 8
@@ -42,11 +53,15 @@ class FaceRecognitionPlugin(BasePlugin):
         self._app = None
         self._model = None
         self._last_detection_time: dict[str, float] = {}
+        self._last_alert_time: dict[str, float] = {}
+        self._track_state: dict[str, dict[str, dict]] = {}
         self._embedding_cache: dict[str, list] = {}
         self._pgvector_available: bool = False
+        self._watchlists: dict[str, set[str]] = {}
 
     async def on_load(self, config: dict) -> None:
         self._config = config
+        self._watchlists = self._normalize_watchlists(config.get("watchlists", {}))
 
         if config.get("preload_model", False):
             self._ensure_model_loaded()
@@ -99,6 +114,7 @@ class FaceRecognitionPlugin(BasePlugin):
                         metadata JSONB DEFAULT '{}'
                     )
                 """))
+                await self._migrate_face_embeddings_schema(db, text)
                 await db.execute(text("""
                     CREATE INDEX IF NOT EXISTS idx_face_embeddings_cosine
                     ON face_embeddings USING ivfflat (embedding vector_cosine_ops)
@@ -125,12 +141,31 @@ class FaceRecognitionPlugin(BasePlugin):
                         metadata JSONB DEFAULT '{}'
                     )
                 """))
+                await self._migrate_face_embeddings_schema(db, text)
                 await db.commit()
                 self._pgvector_available = False
                 log.warning("face_recognition: pgvector not available — similarity search disabled, using TEXT fallback")
             except Exception as exc:
                 await db.rollback()
                 log.error("face_recognition: table setup failed: %s", exc)
+
+    async def _migrate_face_embeddings_schema(self, db, text) -> None:
+        await db.execute(text("ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'"))
+        await db.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'face_embeddings'
+                      AND column_name = 'extra_data'
+                ) THEN
+                    UPDATE face_embeddings
+                    SET metadata = extra_data
+                    WHERE metadata = '{}'::jsonb;
+                END IF;
+            END $$;
+        """))
 
     async def on_event(self, event: dict) -> None:
         pass
@@ -188,11 +223,13 @@ class FaceRecognitionPlugin(BasePlugin):
         if not faces:
             return
 
-        _, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 70])
-
-        for face in faces:
+        for idx, face in enumerate(faces):
             det_score = float(face.det_score) if hasattr(face, "det_score") else 0.5
             if det_score < self._config.get("min_face_confidence", 0.5):
+                continue
+            bbox = face.bbox.tolist() if hasattr(face.bbox, "tolist") else list(face.bbox)
+            quality = self._assess_face_quality(image, face)
+            if quality["quality_score"] < self._config.get("min_quality_score", 0.45):
                 continue
 
             embedding = face.embedding
@@ -200,32 +237,65 @@ class FaceRecognitionPlugin(BasePlugin):
                 continue
 
             embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+            track_id = self._assign_face_track(camera_name, bbox, timestamp, idx)
+            best_snapshot = self._face_snapshot(image, bbox)
+            if best_snapshot is None:
+                _, jpeg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 78])
+                best_snapshot = jpeg.tobytes()
 
             match_result = await self._search_similar_faces(
                 embedding_list,
-                threshold=self._config.get("similarity_threshold", 0.5),
+                threshold=self._config.get("similarity_threshold", 0.6),
             )
 
             if match_result:
                 person_name, similarity, db_id = match_result
-                await self.emit_alert(
-                    camera_id=camera_name,
-                    alert_type="face_recognized",
-                    severity=self._config.get("alert_severity", "medium"),
-                    data={
-                        "person_name": person_name,
-                        "similarity": float(similarity),
-                        "camera_name": camera_name,
-                        "bbox": face.bbox.tolist() if hasattr(face.bbox, 'tolist') else list(face.bbox),
-                        "confidence": det_score,
-                        "db_id": db_id,
-                    },
-                    snapshot_bytes=jpeg.tobytes(),
-                )
+                event_type = self._event_type_for_person(person_name)
+                severity = self._severity_for_person(person_name, float(similarity), quality["quality_score"])
+                identity_key = f"{camera_name}:{person_name}:{event_type}"
+                if self._alert_allowed(identity_key, timestamp):
+                    await self.emit_alert(
+                        camera_id=camera_name,
+                        alert_type=event_type.value,
+                        severity=severity,
+                        data={
+                            "person_name": person_name,
+                            "similarity": float(similarity),
+                            "camera_name": camera_name,
+                            "bbox": bbox,
+                            "confidence": det_score,
+                            "db_id": db_id,
+                            "track_id": track_id,
+                            "quality": quality,
+                            "watchlists": self._watchlists_for_person(person_name),
+                            "pipeline": {
+                                "detector": "InsightFace/SCRFD",
+                                "recognizer": "ArcFace",
+                                "matcher": "pgvector" if self._pgvector_available else "python_cosine",
+                            },
+                        },
+                        snapshot_bytes=best_snapshot,
+                    )
             else:
-                await self._store_unknown_face(
-                    embedding_list, camera_name, face, jpeg.tobytes()
-                )
+                unknown_id = await self._store_unknown_face(embedding_list, camera_name, face, best_snapshot, quality)
+                if self._config.get("emit_unknown_events", True):
+                    key = f"{camera_name}:unknown:{track_id}"
+                    if self._alert_allowed(key, timestamp, self._config.get("unknown_alert_cooldown", 30)):
+                        await self.emit_alert(
+                            camera_id=camera_name,
+                            alert_type=FaceEventType.UNKNOWN.value,
+                            severity="low",
+                            data={
+                                "person_name": "unknown",
+                                "camera_name": camera_name,
+                                "bbox": bbox,
+                                "confidence": det_score,
+                                "db_id": unknown_id,
+                                "track_id": track_id,
+                                "quality": quality,
+                            },
+                            snapshot_bytes=best_snapshot,
+                        )
 
     async def _search_similar_faces(
         self,
@@ -244,6 +314,7 @@ class FaceRecognitionPlugin(BasePlugin):
                     SELECT person_name, 1 - (embedding <=> '{embedding_str}'::vector) AS similarity, id
                     FROM face_embeddings
                     WHERE 1 - (embedding <=> '{embedding_str}'::vector) > :threshold
+                      AND {self._registered_where_clause()}
                     ORDER BY embedding <=> '{embedding_str}'::vector
                     LIMIT :limit
                 """), {"threshold": threshold, "limit": limit})
@@ -318,29 +389,35 @@ class FaceRecognitionPlugin(BasePlugin):
         camera_name: str,
         face,
         image_bytes: bytes,
-    ) -> None:
+        quality: Optional[dict] = None,
+    ) -> Optional[int]:
         if not self._config.get("store_unknown_faces", True):
-            return
+            return None
 
         try:
             async with AsyncSessionLocal() as db:
                 from sqlalchemy import text
                 embedding_str = "[" + ",".join(map(str, embedding)) + "]"
-                await db.execute(text("""
-                    INSERT INTO face_embeddings (person_name, embedding, camera_id, image_bytes, extra_data)
-                    VALUES ('unknown', :embedding, :camera_id, :image_bytes, :extra_data)
+                result = await db.execute(text("""
+                    INSERT INTO face_embeddings (person_name, embedding, camera_id, image_bytes, metadata)
+                    VALUES ('unknown', :embedding, :camera_id, :image_bytes, :metadata)
+                    RETURNING id
                 """), {
                     "embedding": embedding_str,
                     "camera_id": camera_name,
                     "image_bytes": image_bytes,
-                    "extra_data": json.dumps({
+                    "metadata": json.dumps({
                         "det_score": float(face.det_score) if hasattr(face, 'det_score') else 0,
                         "bbox": face.bbox.tolist() if hasattr(face.bbox, 'tolist') else [],
+                        "quality": quality or {},
                     }),
                 })
+                row = result.fetchone()
                 await db.commit()
+                return int(row[0]) if row else None
         except Exception as exc:
             log.warning("Failed to store unknown face: %s", exc)
+            return None
 
     async def register_face(
         self,
@@ -363,6 +440,9 @@ class FaceRecognitionPlugin(BasePlugin):
                 return False
 
             face = faces[0]
+            quality = self._assess_face_quality(image, face)
+            if quality["quality_score"] < self._config.get("registration_min_quality_score", 0.35):
+                return False
             embedding = face.embedding
             embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
             detected_metadata = {
@@ -375,14 +455,14 @@ class FaceRecognitionPlugin(BasePlugin):
                 from sqlalchemy import text
                 embedding_str = "[" + ",".join(map(str, embedding_list)) + "]"
                 await db.execute(text("""
-                    INSERT INTO face_embeddings (person_name, person_id, embedding, image_bytes, extra_data)
-                    VALUES (:name, :person_id, :embedding, :image_bytes, :extra_data)
+                    INSERT INTO face_embeddings (person_name, person_id, embedding, image_bytes, metadata)
+                    VALUES (:name, :person_id, :embedding, :image_bytes, :metadata)
                 """), {
                     "name": person_name,
                     "person_id": person_id,
                     "embedding": embedding_str,
                     "image_bytes": image_bytes,
-                    "extra_data": json.dumps(detected_metadata),
+                    "metadata": json.dumps({**detected_metadata, "quality": quality}),
                 })
                 await db.commit()
             return True
@@ -427,6 +507,103 @@ class FaceRecognitionPlugin(BasePlugin):
     async def on_unload(self) -> None:
         self._app = None
         self._embedding_cache.clear()
+        self._track_state.clear()
+        self._last_alert_time.clear()
+
+    def _assess_face_quality(self, image, face) -> dict:
+        bbox = face.bbox.tolist() if hasattr(face.bbox, "tolist") else list(face.bbox)
+        h, w = image.shape[:2]
+        x1, y1, x2, y2 = [int(max(0, float(v))) for v in bbox]
+        x2 = min(w, x2)
+        y2 = min(h, y2)
+        crop = image[y1:y2, x1:x2]
+        if crop.size == 0:
+            return {"quality_score": 0.0, "size_score": 0.0, "blur_score": 0.0, "brightness_score": 0.0}
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        area_ratio = ((x2 - x1) * (y2 - y1)) / max(1, w * h)
+        size_score = min(1.0, area_ratio / max(0.0001, self._config.get("ideal_face_area_ratio", 0.015)))
+        blur = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        blur_score = min(1.0, blur / max(1.0, self._config.get("ideal_sharpness", 120)))
+        brightness = float(gray.mean())
+        brightness_score = max(0.0, min(1.0, 1.0 - abs(brightness - 128.0) / 128.0))
+        det_score = float(face.det_score) if hasattr(face, "det_score") else 0.5
+        quality_score = round((det_score * 0.35) + (size_score * 0.25) + (blur_score * 0.25) + (brightness_score * 0.15), 3)
+        return {
+            "quality_score": quality_score,
+            "size_score": round(size_score, 3),
+            "blur_score": round(blur_score, 3),
+            "brightness_score": round(brightness_score, 3),
+            "area_ratio": round(area_ratio, 5),
+            "sharpness": round(blur, 1),
+            "brightness": round(brightness, 1),
+        }
+
+    def _assign_face_track(self, camera_name: str, bbox: list, timestamp: float, idx: int) -> str:
+        tracks = self._track_state.setdefault(camera_name, {})
+        center = self._bbox_center(bbox)
+        best_id = None
+        best_dist = float("inf")
+        for track_id, info in list(tracks.items()):
+            if timestamp - info.get("last_seen", 0) > self._config.get("track_stale_seconds", 8):
+                tracks.pop(track_id, None)
+                continue
+            dist = ((center[0] - info["center"][0]) ** 2 + (center[1] - info["center"][1]) ** 2) ** 0.5
+            if dist < best_dist and dist <= self._config.get("track_match_distance_px", 90):
+                best_id = track_id
+                best_dist = dist
+        if best_id is None:
+            best_id = f"face-{int(timestamp)}-{idx}-{len(tracks) + 1}"
+        tracks[best_id] = {"center": center, "bbox": bbox, "last_seen": timestamp}
+        return best_id
+
+    def _alert_allowed(self, key: str, timestamp: float, cooldown: Optional[float] = None) -> bool:
+        cooldown = float(cooldown if cooldown is not None else self._config.get("same_person_alert_cooldown", 60))
+        last = self._last_alert_time.get(key)
+        if last is not None and timestamp - last < cooldown:
+            return False
+        self._last_alert_time[key] = timestamp
+        return True
+
+    def _event_type_for_person(self, person_name: str) -> FaceEventType:
+        lists = self._watchlists_for_person(person_name)
+        if "blacklist" in lists:
+            return FaceEventType.BLACKLIST
+        if "vip" in lists:
+            return FaceEventType.VIP
+        if lists:
+            return FaceEventType.WATCHLIST
+        return FaceEventType.RECOGNIZED
+
+    def _severity_for_person(self, person_name: str, similarity: float, quality: float) -> str:
+        lists = self._watchlists_for_person(person_name)
+        if "blacklist" in lists:
+            return "critical"
+        if "vip" in lists:
+            return "high"
+        if similarity >= self._config.get("strict_similarity_threshold", 0.75) and quality >= 0.6:
+            return "high"
+        return self._config.get("alert_severity", "medium")
+
+    def _watchlists_for_person(self, person_name: str) -> list[str]:
+        normalized = person_name.strip().lower()
+        return sorted(name for name, people in self._watchlists.items() if normalized in people)
+
+    @staticmethod
+    def _normalize_watchlists(raw: dict) -> dict[str, set[str]]:
+        return {
+            str(name).lower(): {str(person).strip().lower() for person in people or [] if str(person).strip()}
+            for name, people in (raw or {}).items()
+        }
+
+    @staticmethod
+    def _bbox_center(bbox: list) -> tuple[float, float]:
+        return ((float(bbox[0]) + float(bbox[2])) / 2, (float(bbox[1]) + float(bbox[3])) / 2)
+
+    def _face_snapshot(self, image, bbox: list) -> bytes | None:
+        from app.plugins.shared.annotation import annotate_frame, encode_jpeg
+        annotated = annotate_frame(image, [bbox], color=(0, 230, 100), label="face", thickness=2)
+        result = encode_jpeg(annotated, quality=78)
+        return result or None
 
     def get_config_schema(self) -> dict:
         return {
@@ -451,8 +628,16 @@ class FaceRecognitionPlugin(BasePlugin):
                 "similarity_threshold": {
                     "type": "number",
                     "title": "Umbral de similitud",
-                    "description": "0.5 = 50% mínimo de similitud para reconocer",
-                    "default": 0.5,
+                    "description": "0.6 = balanceado; 0.75 = estricto",
+                    "default": 0.6,
+                    "minimum": 0.1,
+                    "maximum": 1.0,
+                },
+                "strict_similarity_threshold": {
+                    "type": "number",
+                    "title": "Umbral estricto",
+                    "description": "Eleva severidad cuando la coincidencia supera este valor",
+                    "default": 0.75,
                     "minimum": 0.1,
                     "maximum": 1.0,
                 },
@@ -463,6 +648,40 @@ class FaceRecognitionPlugin(BasePlugin):
                     "default": 0.5,
                     "minimum": 0.1,
                     "maximum": 1.0,
+                },
+                "min_quality_score": {
+                    "type": "number",
+                    "title": "Calidad mínima",
+                    "description": "Filtra blur, baja luz y caras demasiado pequeñas antes del reconocimiento",
+                    "default": 0.45,
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                },
+                "registration_min_quality_score": {
+                    "type": "number",
+                    "title": "Calidad mínima para registrar",
+                    "default": 0.35,
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                },
+                "same_person_alert_cooldown": {
+                    "type": "number",
+                    "title": "Anti-flood misma persona (s)",
+                    "default": 60,
+                    "minimum": 0,
+                    "maximum": 3600,
+                },
+                "unknown_alert_cooldown": {
+                    "type": "number",
+                    "title": "Anti-flood desconocidos (s)",
+                    "default": 30,
+                    "minimum": 0,
+                    "maximum": 3600,
+                },
+                "emit_unknown_events": {
+                    "type": "boolean",
+                    "title": "Emitir eventos de desconocidos",
+                    "default": True,
                 },
                 "use_gpu": {
                     "type": "boolean",
@@ -482,6 +701,12 @@ class FaceRecognitionPlugin(BasePlugin):
                     "description": "Guarda rostros no reconocidos para revisión manual posterior",
                     "default": True,
                 },
+                "watchlists": {
+                    "type": "object",
+                    "title": "Watchlists",
+                    "description": "Listas por nombre: vip, blacklist, employees, contractors, missing_persons",
+                    "default": {"vip": [], "blacklist": [], "employees": [], "contractors": []},
+                },
                 "enabled_cameras": {
                     "type": "array",
                     "title": "Cámaras habilitadas",
@@ -500,6 +725,46 @@ class FaceRecognitionPlugin(BasePlugin):
 
         plugin_self = self
         router = APIRouter()
+
+        @router.get("/stats")
+        async def get_stats(_=Depends(get_current_user)):
+            from sqlalchemy import text
+            try:
+                async with AsyncSessionLocal() as db:
+                    registered = await db.execute(text(f"""
+                        SELECT COUNT(*) FROM face_embeddings
+                        WHERE {plugin_self._registered_where_clause()}
+                    """))
+                    unknown = await db.execute(text(f"""
+                        SELECT COUNT(*) FROM face_embeddings
+                        WHERE {plugin_self._unknown_where_clause()}
+                    """))
+                    recent = await db.execute(text("""
+                        SELECT COUNT(*) FROM face_embeddings
+                        WHERE created_at >= NOW() - INTERVAL '24 hours'
+                    """))
+                return {
+                    "model_loaded": plugin_self._app is not None,
+                    "pgvector_available": plugin_self._pgvector_available,
+                    "registered_faces": int(registered.scalar() or 0),
+                    "unknown_faces": int(unknown.scalar() or 0),
+                    "faces_24h": int(recent.scalar() or 0),
+                    "active_tracks": sum(len(v) for v in plugin_self._track_state.values()),
+                    "watchlists": {name: len(people) for name, people in plugin_self._watchlists.items()},
+                    "quality_threshold": plugin_self._config.get("min_quality_score", 0.45),
+                    "similarity_threshold": plugin_self._config.get("similarity_threshold", 0.6),
+                }
+            except Exception as exc:
+                log.warning("face_recognition stats failed: %s", exc)
+                return {
+                    "model_loaded": plugin_self._app is not None,
+                    "pgvector_available": plugin_self._pgvector_available,
+                    "registered_faces": 0,
+                    "unknown_faces": 0,
+                    "faces_24h": 0,
+                    "active_tracks": sum(len(v) for v in plugin_self._track_state.values()),
+                    "watchlists": {name: len(people) for name, people in plugin_self._watchlists.items()},
+                }
 
         @router.get("/faces")
         async def list_faces(

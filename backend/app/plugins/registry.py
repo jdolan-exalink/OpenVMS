@@ -54,6 +54,7 @@ class _PluginRegistry:
         severity: str,
         data: dict,
         snapshot_bytes: bytes | None = None,
+        clip_path: str | None = None,
     ) -> None:
         await alert_service.emit(
             plugin_name=plugin_name,
@@ -62,6 +63,7 @@ class _PluginRegistry:
             severity=severity,
             data=data,
             snapshot_bytes=snapshot_bytes,
+            clip_path=clip_path,
         )
 
     @staticmethod

@@ -15,8 +15,10 @@ class Settings(BaseSettings):
     ome_llhls_base: str
     cors_origins: list[str] = ["http://localhost:3000"]
     admin_username: str = "admin"
-    admin_password: str = "admin123"
+    admin_password: str
     exports_path: str = "/tmp/exports"
+    # Host:port that Frigate uses to pull RTSP from go2rtc (e.g. 127.0.0.1:8554)
+    go2rtc_rtsp_host: str = "127.0.0.1:8554"
 
 
 settings = Settings()  # type: ignore[call-arg]

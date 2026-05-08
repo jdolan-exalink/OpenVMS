@@ -27,7 +27,5 @@ services:
       - /dev/nvidia0:/dev/nvidia0
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
-    environment:
-      CORS_ORIGINS: '["http://localhost:3010","http://10.1.1.252:3010"]'
-      OME_WEBRTC_BASE: ws://10.1.1.252:3333
-      OME_LLHLS_BASE: http://10.1.1.252:3334
+    # All environment values (CORS_ORIGINS, OME_WEBRTC_BASE, OME_LLHLS_BASE,
+    # GO2RTC_HOST, GO2RTC_ADMIN_HOST, etc.) come from .env — no overrides here.

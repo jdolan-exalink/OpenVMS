@@ -49,7 +49,7 @@ shell-backend:
 	docker compose exec backend bash
 
 shell-db:
-	docker compose exec postgres psql -U opencctv opencctv
+	docker compose exec postgres psql -U $${POSTGRES_USER:-opencctv} $${POSTGRES_DB:-opencctv}
 
 # ── Quality ──────────────────────────────────────────────────────────────────
 test:

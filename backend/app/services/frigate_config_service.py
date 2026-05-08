@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.frigate_config import FrigateConfigHistory
 from app.models.frigate_server import FrigateServer
 from app.services.frigate_service import FrigateConfigError, FrigateService
@@ -166,13 +167,14 @@ class FrigateConfigService:
         if camera_name in config.get("cameras", {}):
             raise ValueError(f"Camera '{camera_name}' already exists in Frigate")
 
-        # 4. Build camera config using go2rtc restream (127.0.0.1:8554)
+        # 4. Build camera config using go2rtc restream (GO2RTC_RTSP_HOST)
+        rtsp_base = f"rtsp://{settings.go2rtc_rtsp_host}"
         detect_path = (
-            f"rtsp://127.0.0.1:8554/{camera_name}_sub"
+            f"{rtsp_base}/{camera_name}_sub"
             if rtsp_sub
-            else f"rtsp://127.0.0.1:8554/{camera_name}"
+            else f"{rtsp_base}/{camera_name}"
         )
-        record_path = f"rtsp://127.0.0.1:8554/{camera_name}"
+        record_path = f"{rtsp_base}/{camera_name}"
 
         camera_cfg: dict = {
             "ffmpeg": {

@@ -140,6 +140,11 @@ services:
     build: ./frontend
     ports:
       - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      # go2rtc streaming endpoint (stream.html, MSE WebSocket, WebRTC)
+      GO2RTC_HOST: ${GO2RTC_HOST:-127.0.0.1:1984}
+      # go2rtc admin panel / secondary API endpoint
+      GO2RTC_ADMIN_HOST: ${GO2RTC_ADMIN_HOST:-127.0.0.1:5000}
     depends_on:
       - backend
     restart: unless-stopped

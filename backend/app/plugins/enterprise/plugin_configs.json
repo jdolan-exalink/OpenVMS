@@ -330,7 +330,7 @@
     "category": "ai",
     "description": "Genera descripciones automáticas de eventos de cámara usando un modelo VLM vía Ollama (LLaVA, bakllava, etc.)",
     "example": {
-      "ollama_url": "http://10.1.1.39:11434",
+      "ollama_url": "http://localhost:11434",
       "model": "gemma4:e4b",
       "min_severity": "medium",
       "excluded_labels": [],

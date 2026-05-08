@@ -49,7 +49,24 @@
       "Bash(curl -s \"http://10.1.1.252:5000/api/config\")",
       "Bash(curl -s \"http://10.1.1.252:1984/api/streams\")",
       "Bash(curl -s \"http://10.1.1.252:1984/api/frame.jpeg?src=Portones_sub\" -o /tmp/current_portones.jpg -w \"size=%{size_download}\\\\n\")",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(cp /root/OpenVMS/openvms-logocompleto.png /root/OpenVMS/frontend/public/openvms-logocompleto.png)",
+      "Bash(cp /root/OpenVMS/openvms-logocuadrado.png /root/OpenVMS/frontend/public/openvms-logocuadrado.png)",
+      "Bash(docker run *)",
+      "Bash(sed -n '3,25p' /root/OpenVMS/frontend/src/api/cameras.ts)",
+      "Bash(sed -n '3,18p' /root/OpenVMS/frontend/src/api/servers.ts)",
+      "Bash(git -C /root/OpenVMS status)",
+      "Bash(git -C /root/OpenVMS diff --stat)",
+      "Bash(git *)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(awk '{print $7, $9}')",
+      "Bash(ffprobe -v quiet -print_format json -show_streams \"http://10.1.1.252:1984/api/stream.mp4?src=Baldio_Fondo_sub&duration=2\")",
+      "Bash(ffprobe -v quiet -print_format json -show_streams \"rtsp://10.1.1.252:8554/Baldio_Fondo_sub\")",
+      "Bash(ffprobe -v error -show_streams -print_format json /tmp/baldio_fondo.mp4)",
+      "Read(//dev/**)",
+      "Read(//dev/bus/**)",
+      "Bash(grep -v \"^$\\\\|FutureWarning\\\\|pynvml\\\\|UserWarning\\\\|ccache\")"
     ]
   }
 }

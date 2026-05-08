@@ -162,6 +162,18 @@ OpenVMS incluye **15 plugins** organizados en dos categorías: **builtin** (2) y
 
 ---
 
+## Documentación
+
+| Documento | Descripción |
+|---|---|
+| [`docs/deployment.md`](docs/deployment.md) | Guía completa de despliegue: CPU/GPU/Coral, Frigate local y remoto, multi-servidor |
+| [`docs/liveview.md`](docs/liveview.md) | Cómo funciona LiveView: streaming, go2rtc, layouts, zoom, audio, diagnóstico |
+| [`docs/frigate-integration.md`](docs/frigate-integration.md) | Integración con Frigate: MQTT, sincronización, config recomendada |
+| [`docs/api.md`](docs/api.md) | Referencia de la API REST |
+| [`docs/plugin-development.md`](docs/plugin-development.md) | Cómo desarrollar plugins propios |
+
+---
+
 ## Quick Start
 
 ### Requisitos

@@ -2,6 +2,7 @@
 
 > **OpenVMS** (Open Computer Vision Video Management System) es un sistema VMS opensource, equivalente a Nx Witness / Avigilon, construido para instalaciones CCTV profesionales con inteligencia artificial.
 
+[![Version](https://img.shields.io/badge/version-1.0.2-brightgreen.svg)](CHANGELOG.md)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
 [![React 18](https://img.shields.io/badge/React-18-cyan.svg)](https://react.dev/)

@@ -24,7 +24,7 @@ class OMEService:
         Use substream automatically for grids >= 4×4 (16+ cells).
         Falls back to main stream if substream not available.
         """
-        use_sub = grid_size >= 16 and bool(camera.ome_stream_sub)  # type: ignore[attr-defined]
+        use_sub = grid_size >= 9 and bool(camera.ome_stream_sub)  # type: ignore[attr-defined]
         return {
             "webrtc": camera.ome_stream_sub if use_sub else camera.ome_stream_main,  # type: ignore[attr-defined]
             "llhls": camera.llhls_sub if use_sub else camera.llhls_main,  # type: ignore[attr-defined]

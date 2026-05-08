@@ -19,7 +19,7 @@ export class VideoRTC extends HTMLElement {
         super();
 
         this.DISCONNECT_TIMEOUT = 5000;
-        this.RECONNECT_TIMEOUT = 15000;
+        this.RECONNECT_TIMEOUT = 8000;
 
         this.CODECS = [
             'avc1.640029',      // H.264 high 4.1 (Chromecast 1st and 2nd Gen)
@@ -466,7 +466,7 @@ export class VideoRTC extends HTMLElement {
 
                 if (!sb.updating && sb.buffered && sb.buffered.length) {
                     const end = sb.buffered.end(sb.buffered.length - 1);
-                    const start = end - 5;
+                    const start = end - 3;
                     const start0 = sb.buffered.start(0);
                     if (start > start0) {
                         sb.remove(start0, start);
@@ -481,7 +481,7 @@ export class VideoRTC extends HTMLElement {
                 }
             });
 
-            const buf = new Uint8Array(2 * 1024 * 1024);
+            const buf = new Uint8Array(1 * 1024 * 1024);
             let bufLen = 0;
 
             this.ondata = data => {

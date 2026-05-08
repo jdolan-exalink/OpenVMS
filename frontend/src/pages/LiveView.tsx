@@ -22,7 +22,7 @@ import { useCameraStore } from "../store/cameraStore";
 // ─── Layout system ──────────────────────────────────────────────────────────────
 
 type LayoutId =
-  | "g1" | "g2x2" | "g3x3" | "g4x4" | "g5x5" | "g6x6"
+  | "g1" | "g2x2" | "g3x3" | "g4x4" | "g5x5" | "g6x6" | "g8x4"
   | "f1p3" | "f1p5" | "f2p4" | "f1p9";
 
 type SlotDef = { colSpan: number; rowSpan: number };
@@ -43,6 +43,7 @@ const LAYOUTS: LayoutDef[] = [
   { id: "g4x4", label: "4×4",  cols: 4, rows: 0, slots: [], max: 16 },
   { id: "g5x5", label: "5×5",  cols: 5, rows: 0, slots: [], max: 25 },
   { id: "g6x6", label: "6×6",  cols: 6, rows: 0, slots: [], max: 36 },
+  { id: "g8x4", label: "Mural", cols: 8, rows: 0, slots: [], max: 32 },
   // 1 large left (full height) + 3 small stacked right
   {
     id: "f1p3", label: "1+3", cols: 2, rows: 3,
@@ -194,6 +195,7 @@ function LayoutIcon({ id }: { id: LayoutId }) {
     case "g4x4":  return <GridIcon cols={4} rows={4} />;
     case "g5x5":  return <GridIcon cols={5} rows={5} />;
     case "g6x6":  return <GridIcon cols={6} rows={6} />;
+    case "g8x4":  return <GridIcon cols={8} rows={4} />;
     case "f1p3":  return <IconF1p3 />;
     case "f1p5":  return <IconF1p5 />;
     case "f2p4":  return <IconF2p4 />;
@@ -422,7 +424,7 @@ function CameraGrid({
         gap: "6px",
       };
 
-  function renderTile(camera: Camera) {
+  function renderTile(camera: Camera, startIndex: number) {
     return (
       <CameraTile
         camera={camera}
@@ -438,6 +440,7 @@ function CameraGrid({
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
+        startIndex={startIndex}
       />
     );
   }
@@ -461,7 +464,7 @@ function CameraGrid({
           }
           return (
             <div key={camera.id} style={itemStyle} className="h-full">
-              {renderTile(camera)}
+              {renderTile(camera, i)}
             </div>
           );
         })}
@@ -471,9 +474,9 @@ function CameraGrid({
 
   return (
     <div style={gridStyle}>
-      {cameras.slice(0, layout.max).map((camera) => (
+      {cameras.slice(0, layout.max).map((camera, index) => (
         <div key={camera.id} className="aspect-video">
-          {renderTile(camera)}
+          {renderTile(camera, index)}
         </div>
       ))}
     </div>
@@ -484,7 +487,7 @@ function CameraGrid({
 
 const CameraTile = memo(function CameraTile({
   camera, server, serverIndex, isDragging, isSelected, isAudioPrimed,
-  onSelect, volume, onVolumeChange, onMaximize, onDragStart, onDragOver, onDragEnd,
+  onSelect, volume, onVolumeChange, onMaximize, onDragStart, onDragOver, onDragEnd, startIndex,
 }: {
   camera: Camera;
   server: FrigateServer | undefined;
@@ -499,6 +502,7 @@ const CameraTile = memo(function CameraTile({
   onDragStart: (cameraId: string) => void;
   onDragOver: (cameraId: string) => void;
   onDragEnd: () => void;
+  startIndex: number;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ZoomView>(defaultZoomView);
@@ -534,6 +538,7 @@ const CameraTile = memo(function CameraTile({
       <LiveStream
         camera={camera} server={server} view={view} mode="preview"
         audioEnabled={isSelected} audioPrimed={isAudioPrimed} volume={volume}
+        startIndex={startIndex}
       />
       <CameraOverlay
         camera={camera} server={server} serverIndex={serverIndex}
@@ -739,8 +744,11 @@ function abandonedColor(state: string, severity: string) {
 
 // ─── LiveStream ─────────────────────────────────────────────────────────────────
 
+const STREAM_BATCH_SIZE = 6;
+const STREAM_BATCH_DELAY_MS = 350;
+
 function LiveStream({
-  camera, server, view, mode, audioEnabled, audioPrimed, volume,
+  camera, server, view, mode, audioEnabled, audioPrimed, volume, startIndex = 0,
 }: {
   camera: Camera;
   server: FrigateServer | undefined;
@@ -749,6 +757,7 @@ function LiveStream({
   audioEnabled: boolean;
   audioPrimed: boolean;
   volume: number;
+  startIndex?: number;
 }) {
   const setCameraStatus = useCameraStore((s) => s.setCameraStatus);
   const clearCameraStatus = useCameraStore((s) => s.clearCameraStatus);
@@ -766,6 +775,14 @@ function LiveStream({
   const [attempt, setAttempt] = useState(0);
 
   const wasOnline = savedStatus === "online";
+
+  const [mounted, setMounted] = useState(startIndex < STREAM_BATCH_SIZE);
+  useEffect(() => {
+    if (mounted) return;
+    const delay = Math.floor(startIndex / STREAM_BATCH_SIZE) * STREAM_BATCH_DELAY_MS;
+    const t = window.setTimeout(() => setMounted(true), delay);
+    return () => window.clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (connectionState !== "offline") return;
@@ -800,7 +817,7 @@ function LiveStream({
   }, [wasOnline, connectionState]);
 
   useEffect(() => {
-    if (connectionState !== "connecting") return;
+    if (!mounted || connectionState !== "connecting") return;
     // Do NOT check iframeRef.current here — when the component first mounts,
     // server may not be loaded yet (early return path), so the iframe isn't in
     // the DOM yet. The ref is accessed lazily inside monitor() instead, so the
@@ -844,10 +861,10 @@ function LiveStream({
     let intervalId: ReturnType<typeof setInterval> | undefined;
     const timeoutId = window.setTimeout(() => {
       monitor();
-      intervalId = window.setInterval(monitor, 250);
+      intervalId = window.setInterval(monitor, 500);
     }, 2000);
     return () => { window.clearTimeout(timeoutId); if (intervalId) window.clearInterval(intervalId); };
-  }, [audioEnabled, attempt, connectionState, streamUrl, volume]);
+  }, [mounted, audioEnabled, attempt, connectionState, streamUrl, volume]);
 
   useEffect(() => {
     if (connectionState !== "online") return;
@@ -861,7 +878,7 @@ function LiveStream({
       } catch { /* same-origin defensive */ }
     };
     apply();
-    const interval = window.setInterval(apply, 500);
+    const interval = window.setInterval(apply, 2000);
     return () => window.clearInterval(interval);
   }, [audioEnabled, connectionState, streamUrl, volume]);
 
@@ -890,6 +907,10 @@ function LiveStream({
         </div>
       </div>
     );
+  }
+
+  if (!mounted) {
+    return <div className="absolute inset-0 bg-black" />;
   }
 
   return (

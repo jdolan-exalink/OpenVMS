@@ -5,6 +5,7 @@ from app.models.frigate_config import FrigateConfigHistory
 from app.models.frigate_server import FrigateServer
 from app.models.people_counting import PeopleCountingHourly
 from app.models.plugins import FaceEmbedding, LprBlacklist, LprEvent, SemanticEvent
+from app.models.system_config import SystemConfig
 from app.models.user import CameraPermission, User
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "LprBlacklist",
     "FaceEmbedding",
     "SemanticEvent",
+    "SystemConfig",
 ]

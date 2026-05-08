@@ -5,17 +5,19 @@ import UsersPanel from "../components/settings/UserManagement";
 import PluginsPanel from "../components/settings/PluginsPanel";
 import ZoneWizardPanel from "../components/settings/ZoneWizardPanel";
 import PerformancePanel from "../components/settings/PerformancePanel";
+import SystemConfigPanel from "../components/settings/SystemConfigPanel";
 import { useAuthStore } from "../store/authStore";
 
-type Tab = "servers" | "cameras" | "users" | "plugins" | "zones" | "performance";
+type Tab = "servers" | "cameras" | "users" | "plugins" | "zones" | "performance" | "sistema";
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
   { id: "servers", label: "Servidores" },
   { id: "cameras", label: "Cámaras" },
   { id: "users", label: "Usuarios" },
   { id: "plugins", label: "Plugins" },
   { id: "zones", label: "Zonas" },
   { id: "performance", label: "Rendimiento" },
+  { id: "sistema", label: "Sistema", adminOnly: true },
 ];
 
 export default function Settings() {
@@ -26,7 +28,7 @@ export default function Settings() {
   return (
     <div className="space-y-3">
       <div className="flex border-b border-[var(--line)]">
-        {TABS.map((t) => (
+        {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -49,6 +51,7 @@ export default function Settings() {
       {tab === "plugins" && <PluginsPanel isAdmin={isAdmin} />}
       {tab === "zones" && <ZoneWizardPanel isAdmin={isAdmin} />}
       {tab === "performance" && <PerformancePanel />}
+      {tab === "sistema" && <SystemConfigPanel />}
     </div>
   );
 }

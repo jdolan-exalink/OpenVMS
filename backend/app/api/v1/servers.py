@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,17 @@ from app.schemas.camera import (
 from app.services.frigate_service import FrigateService
 
 router = APIRouter()
+
+
+class TestConnectionRequest(BaseModel):
+    url: str
+
+
+class TestConnectionResponse(BaseModel):
+    online: bool
+    version: str | None = None
+    cameras: list[str] = []
+    error: str | None = None
 
 
 def _server_values(body: FrigateServerCreate | FrigateServerUpdate) -> tuple[dict, dict]:
@@ -35,6 +48,36 @@ async def _get_or_404(server_id: uuid.UUID, db: AsyncSession) -> FrigateServer:
     if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
     return server
+
+
+@router.post("/test-connection", response_model=TestConnectionResponse)
+async def test_server_connection(
+    body: TestConnectionRequest,
+    _=Depends(get_current_user),
+) -> TestConnectionResponse:
+    base = body.url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{base}/api/version")
+            if resp.status_code != 200:
+                return TestConnectionResponse(online=False, error=f"HTTP {resp.status_code}")
+            version = resp.text.strip()
+            try:
+                cam_resp = await client.get(f"{base}/api/cameras")
+                cameras = list(cam_resp.json().keys()) if cam_resp.status_code == 200 else []
+                if not cameras and cam_resp.status_code == 404:
+                    cfg_resp = await client.get(f"{base}/api/config")
+                    if cfg_resp.status_code == 200:
+                        cameras = list(cfg_resp.json().get("cameras", {}).keys())
+            except Exception:
+                cameras = []
+            return TestConnectionResponse(online=True, version=version, cameras=cameras)
+    except httpx.ConnectError:
+        return TestConnectionResponse(online=False, error="connection_refused")
+    except httpx.TimeoutException:
+        return TestConnectionResponse(online=False, error="timeout")
+    except Exception as exc:
+        return TestConnectionResponse(online=False, error=str(exc))
 
 
 @router.get("", response_model=list[FrigateServerResponse])

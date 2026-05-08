@@ -380,10 +380,15 @@ class FrigateService:
 
         from app.models.camera import Camera
         from app.services.ome_service import OMEService
+        from app.services.system_config_service import SystemConfigService
 
         client = cls.get_client(server)
         frigate_cameras = await client.get_cameras()
         go2rtc_streams = await client.get_go2rtc_streams()
+
+        sys_cfg = await SystemConfigService.get_all(db)  # type: ignore[arg-type]
+        webrtc_base: str | None = sys_cfg.get("ome_webrtc_base")
+        llhls_base: str | None = sys_cfg.get("ome_llhls_base")
 
         added = updated = unchanged = 0
 
@@ -395,7 +400,9 @@ class FrigateService:
                 if f"{cam_name}_sub" in go2rtc_streams
                 else None
             )
-            ome_urls = OMEService.build_stream_urls(str(server.id), cam_name)  # type: ignore[attr-defined]
+            ome_urls = OMEService.build_stream_urls(  # type: ignore[attr-defined]
+                str(server.id), cam_name, webrtc_base=webrtc_base, llhls_base=llhls_base  # type: ignore[attr-defined]
+            )
 
             result = await db.execute(  # type: ignore[attr-defined]
                 select(Camera).where(

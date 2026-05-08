@@ -9,6 +9,7 @@ import {
   syncServer,
   updateServer,
 } from "../../api/servers";
+import ServerWizard from "./ServerWizard";
 
 const INPUT = "mt-1 h-9 w-full rounded border border-[var(--line)] bg-[var(--bg-2)] px-3 text-sm text-[var(--text-0)] outline-none transition focus:border-[var(--acc)]";
 
@@ -50,6 +51,7 @@ export default function ServersPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: servers = [], isLoading } = useQuery("settings-servers", listServers);
 
   const [open, setOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [editing, setEditing] = useState<FrigateServer | null>(null);
   const [form, setForm] = useState<FrigateServerCreate>(EMPTY);
   const [err, setErr] = useState<string | null>(null);
@@ -89,7 +91,7 @@ export default function ServersPanel({ isAdmin }: { isAdmin: boolean }) {
     };
   }
 
-  function openCreate() { setEditing(null); setForm(EMPTY); setErr(null); setOpen(true); }
+  function openCreate() { setWizardOpen(true); }
 
   function openEdit(s: FrigateServer) {
     setEditing(s);
@@ -138,8 +140,20 @@ export default function ServersPanel({ isAdmin }: { isAdmin: boolean }) {
 
   const busy = createMut.isLoading || updateMut.isLoading;
 
+  function handleWizardCreated(_server: FrigateServer) {
+    qc.invalidateQueries("settings-servers");
+    qc.invalidateQueries("settings-cameras");
+    qc.invalidateQueries("live-cameras");
+  }
+
   return (
     <>
+      {wizardOpen && (
+        <ServerWizard
+          onClose={() => setWizardOpen(false)}
+          onCreated={handleWizardCreated}
+        />
+      )}
       <div className="vms-card">
         <div className="vms-card-hd">
           <h3>Servidores Frigate</h3>

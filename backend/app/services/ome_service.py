@@ -5,17 +5,25 @@ from app.config import settings
 
 class OMEService:
     @staticmethod
-    def build_stream_urls(server_id: str, camera_name: str) -> dict[str, str]:
+    def build_stream_urls(
+        server_id: str,
+        camera_name: str,
+        webrtc_base: str | None = None,
+        llhls_base: str | None = None,
+    ) -> dict[str, str]:
         """
         Stream name pattern: {server_id}_{camera_name}
         Returns OME WebRTC and LL-HLS URLs for both main and sub streams.
+        Optional webrtc_base/llhls_base override settings values.
         """
+        rtc = webrtc_base if webrtc_base is not None else settings.ome_webrtc_base
+        hls = llhls_base if llhls_base is not None else settings.ome_llhls_base
         base = f"{server_id}_{camera_name}"
         return {
-            "ome_stream_main": f"{settings.ome_webrtc_base}/{base}",
-            "ome_stream_sub": f"{settings.ome_webrtc_base}/{base}_sub",
-            "llhls_main": f"{settings.ome_llhls_base}/{base}/llhls.m3u8",
-            "llhls_sub": f"{settings.ome_llhls_base}/{base}_sub/llhls.m3u8",
+            "ome_stream_main": f"{rtc}/{base}",
+            "ome_stream_sub": f"{rtc}/{base}_sub",
+            "llhls_main": f"{hls}/{base}/llhls.m3u8",
+            "llhls_sub": f"{hls}/{base}_sub/llhls.m3u8",
         }
 
     @staticmethod

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useNavigate } from "react-router-dom";
 import { Camera, CameraUpdate, deleteCamera, listCameras, updateCamera } from "../../api/cameras";
 import { listServers } from "../../api/servers";
+import { listPlugins, updatePluginConfig } from "../../api/plugins";
+import type { Plugin } from "../../api/plugins";
 
 const INPUT = "mt-1 h-9 w-full rounded border border-[var(--line)] bg-[var(--bg-2)] px-3 text-sm text-[var(--text-0)] outline-none transition focus:border-[var(--acc)]";
 
@@ -37,6 +39,7 @@ export default function CamerasPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: serversData = [] } = useQuery("settings-servers", listServers);
   const { data, isLoading } = useQuery("settings-cameras", () => listCameras({ page_size: 200 }));
   const cameras = data?.items ?? [];
+  const { data: plugins = [] } = useQuery("plugins", listPlugins);
 
   const [filterServerId, setFilterServerId] = useState<string>("all");
   const [open, setOpen] = useState(false);
@@ -44,6 +47,54 @@ export default function CamerasPanel({ isAdmin }: { isAdmin: boolean }) {
   const [form, setForm] = useState<CameraUpdate & { display_name: string }>({ display_name: "", enabled: true, has_audio: false, has_ptz: false, tags: [] });
   const [tagsRaw, setTagsRaw] = useState("");
   const [err, setErr] = useState<string | null>(null);
+
+  const cameraPlugins = plugins.filter(
+    (p: Plugin) => "enabled_cameras" in (p.config ?? {}),
+  );
+
+  const [pluginAssignments, setPluginAssignments] = useState<Record<string, boolean>>({});
+  const [pluginSaveStatus, setPluginSaveStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+
+  useEffect(() => {
+    if (!editing) return;
+    const initial = Object.fromEntries(
+      cameraPlugins.map((p: Plugin) => [
+        p.name,
+        ((p.config["enabled_cameras"] as string[] | undefined) ?? []).includes(editing.frigate_name),
+      ]),
+    );
+    setPluginAssignments(initial);
+    setPluginSaveStatus("idle");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  const pluginMut = useMutation(
+    async () => {
+      if (!editing) return;
+      const tasks = cameraPlugins
+        .filter((p: Plugin) => {
+          const current = ((p.config["enabled_cameras"] as string[] | undefined) ?? []).includes(editing.frigate_name);
+          return pluginAssignments[p.name] !== current;
+        })
+        .map((p: Plugin) => {
+          const current: string[] = (p.config["enabled_cameras"] as string[] | undefined) ?? [];
+          const assigned = pluginAssignments[p.name];
+          const newList = assigned
+            ? [...current, editing.frigate_name]
+            : current.filter((n) => n !== editing.frigate_name);
+          return updatePluginConfig(p.name, { ...p.config, enabled_cameras: newList });
+        });
+      await Promise.all(tasks);
+    },
+    {
+      onSuccess: () => {
+        qc.invalidateQueries("plugins");
+        setPluginSaveStatus("ok");
+        setTimeout(() => setPluginSaveStatus("idle"), 2500);
+      },
+      onError: () => setPluginSaveStatus("error"),
+    },
+  );
 
   const updateMut = useMutation(
     ({ id, body }: { id: string; body: CameraUpdate }) => updateCamera(id, body),
@@ -78,7 +129,12 @@ export default function CamerasPanel({ isAdmin }: { isAdmin: boolean }) {
     setOpen(true);
   }
 
-  function closeModal() { setOpen(false); setEditing(null); setErr(null); }
+  function closeModal() { setOpen(false); setEditing(null); setErr(null); setPluginSaveStatus("idle"); }
+
+  function handlePluginSave() {
+    setPluginSaveStatus("saving");
+    pluginMut.mutate();
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setErr(null);
@@ -185,6 +241,48 @@ export default function CamerasPanel({ isAdmin }: { isAdmin: boolean }) {
               <p className="mono text-[11px] text-[var(--text-2)]">frigate: {editing.frigate_name}</p>
               {editing.rtsp_main && <p className="mono text-[11px] text-[var(--text-2)]">rtsp: {editing.rtsp_main}</p>}
             </div>
+
+            {cameraPlugins.length > 0 && (
+              <div className="rounded border border-[var(--line)] bg-[var(--bg-2)] p-3 space-y-2">
+                <p className="text-[10px] font-medium text-[var(--text-3)] uppercase tracking-wide">
+                  Plugins asignados
+                </p>
+                <div className="grid grid-cols-2 gap-y-1.5 gap-x-3">
+                  {cameraPlugins.map((p: Plugin) => (
+                    <label key={p.name} className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!pluginAssignments[p.name]}
+                        onChange={(e) =>
+                          setPluginAssignments((prev) => ({ ...prev, [p.name]: e.target.checked }))
+                        }
+                        className="accent-[var(--acc)]"
+                      />
+                      <span className="text-xs text-[var(--text-1)]">
+                        {p.display_name ?? p.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handlePluginSave}
+                    disabled={pluginSaveStatus === "saving"}
+                    className="vms-btn !h-7 !min-h-0 !px-2.5 !text-xs disabled:opacity-60"
+                  >
+                    {pluginSaveStatus === "saving" ? "Guardando..." : "Guardar plugins"}
+                  </button>
+                  {pluginSaveStatus === "ok" && (
+                    <span className="text-xs text-green-400">Guardado</span>
+                  )}
+                  {pluginSaveStatus === "error" && (
+                    <span className="text-xs text-[var(--warn)]">Error al guardar</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {err && <p className="rounded border border-[var(--warn)] bg-[var(--warn-soft)] px-3 py-2 text-sm text-[var(--warn)]">{err}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={closeModal} className="vms-btn">Cancelar</button>

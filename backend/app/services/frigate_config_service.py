@@ -168,7 +168,9 @@ class FrigateConfigService:
             raise ValueError(f"Camera '{camera_name}' already exists in Frigate")
 
         # 4. Build camera config using go2rtc restream (GO2RTC_RTSP_HOST)
-        rtsp_base = f"rtsp://{settings.go2rtc_rtsp_host}"
+        from app.services.system_config_service import SystemConfigService
+        go2rtc_host = await SystemConfigService.get("go2rtc_rtsp_host", db, settings.go2rtc_rtsp_host)
+        rtsp_base = f"rtsp://{go2rtc_host}"
         detect_path = (
             f"{rtsp_base}/{camera_name}_sub"
             if rtsp_sub
